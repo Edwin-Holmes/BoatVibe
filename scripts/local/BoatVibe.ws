@@ -25,7 +25,7 @@ class CBoatVibrationManager extends CObject {
 
         // 3. Rudder Tension (Feel the wood creak while turning)
         // isChangingSteer is the internal flag for moving the rudder
-        if (boat.isChangingSteer) {
+        if (boat.GetIsChangingSteer()) {
             cvsVibrate(0, 0.05);
         }
     }
@@ -83,4 +83,11 @@ public var boatVibeManager : CBoatVibrationManager;
             boatVibeManager.TriggerWaveImpact(boatEntity.IsEffectActive('front_splash'));
         }
     }
+}
+
+@addMethod(CBoatComponent)
+public function GetIsChangingSteer() : bool 
+{
+    // Inside this added method, you have full access to private variables
+    return this.isChangingSteer;
 }
