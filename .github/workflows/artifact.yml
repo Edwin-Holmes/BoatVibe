@@ -1,0 +1,69 @@
+name: Create Artifact
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Package mod
+        shell: pwsh
+        run: |
+          $workspaceRoot = "${{ github.workspace }}"
+          $repoName      = "${{ github.event.repository.name }}"
+          $version       = "${{ github.ref_name }}"
+          $modName       = "mod$repoName"
+
+          $buildRoot   = Join-Path $workspaceRoot "build"
+          $binPath     = Join-Path $buildRoot "bin\config\r4game\user_config_matrix\pc"
+          $modPath     = Join-Path $buildRoot "mods\$modName"
+          $contentPath = Join-Path $modPath "content"
+
+          if (Test-Path $buildRoot) { Remove-Item $buildRoot -Recurse -Force }
+          New-Item -Force -ItemType Directory -Path $contentPath | Out-Null
+
+          function NotIgnored($item) {
+            return ($item.FullName -notmatch '\\Ignored\\' -and $item.FullName -notmatch '\\build\\')
+          }
+
+          # Copy scripts
+          Get-ChildItem "$workspaceRoot\scripts" -Recurse | Where-Object { NotIgnored $_ } | ForEach-Object {
+            $dest = $_.FullName.Replace($workspaceRoot, $contentPath)
+            New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+            Copy-Item $_.FullName $dest -Force
+          }
+
+          # Copy w3strings
+          Get-ChildItem $workspaceRoot -Recurse -Filter *.w3strings | Where-Object { NotIgnored $_ } | ForEach-Object {
+            $dest = Join-Path $contentPath $_.Name
+            if ($_.FullName -ne $dest) { Copy-Item $_.FullName $dest -Force }
+          }
+
+          # Copy settings.txt
+          Get-ChildItem $workspaceRoot -Recurse -Filter *.settings.txt | Where-Object { NotIgnored $_ } | ForEach-Object {
+            $dest = Join-Path $modPath $_.Name
+            if ($_.FullName -ne $dest) { Copy-Item $_.FullName $dest -Force }
+          }
+
+          # Copy XMLs only if they exist
+          $xmlFiles = Get-ChildItem $workspaceRoot -Recurse -Filter *.xml | Where-Object { NotIgnored $_ }
+          if ($xmlFiles.Count -gt 0) {
+            New-Item -Force -ItemType Directory -Path $binPath | Out-Null
+            $xmlFiles | ForEach-Object {
+              $dest = Join-Path $binPath $_.Name
+              if ($_.FullName -ne $dest) { Copy-Item $_.FullName $dest -Force }
+            }
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.ref_name }}
+          path: build/
