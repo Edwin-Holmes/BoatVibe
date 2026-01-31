@@ -16,7 +16,7 @@ class CBoatVibrationManager extends CObject {
             boatTimer -= dt;
             if (boatTimer <= 0) {
                 // VeryLight (0) for the water texture
-                CSU_HapticVibe(0, 0.1); 
+                cvsVibrate(0, 0.1); 
                 
                 // Interval scales: faster speed = faster heartbeat
                 boatTimer = 0.9 - (currentSpeed * 0.6); 
@@ -26,15 +26,15 @@ class CBoatVibrationManager extends CObject {
         // 3. Rudder Tension (Feel the wood creak while turning)
         // isChangingSteer is the internal flag for moving the rudder
         if (boat.isChangingSteer) {
-            CSU_HapticVibe(0, 0.05);
+            cvsVibrate(0, 0.05);
         }
     }
 
     public function TriggerWaveImpact(isHeavy : bool) {
         if (isHeavy) {
-            CSU_HapticVibe(2, 0.25); // Hard thud for cresting waves
+            cvsVibrate(2, 0.25); // Hard thud for cresting waves
         } else {
-            CSU_HapticVibe(1, 0.1);  // Light slap for small chop
+            cvsVibrate(1, 0.1);  // Light slap for small chop
         }
     }
 }
@@ -43,20 +43,20 @@ class CBoatVibrationManager extends CObject {
 public var boatVibeManager : CBoatVibrationManager;
 
 // Create manager when player takes the helm
-@wrapMethod(CBoatComponent) function MountStarted() {
+@wrapMethod(CBoatComponent) function OnMountStarted( entity : CEntity, vehicleSlot : EVehicleSlot ) {
     if (!boatVibeManager) {
         boatVibeManager = new CBoatVibrationManager in this;
     }
-    return wrappedMethod();
+    return wrappedMethod(entity, vehicleSlot);
 }
 
 // Destroy manager when player lets go of the helm
-@wrapMethod(CBoatComponent) function DismountFinished() {
+@wrapMethod(CBoatComponent) function OnDismountFinished( entity : CEntity, vehicleSlot : EVehicleSlot  ) {
     if (boatVibeManager) {
         delete boatVibeManager;
         boatVibeManager = NULL;
     }
-    return wrappedMethod();
+    return wrappedMethod(entity, vehicleSlot);
 }
 
 // Inject logic into the main Tick
