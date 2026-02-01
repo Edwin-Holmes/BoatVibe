@@ -1,61 +1,58 @@
 class CBoatVibrationManager extends CObject {
-    private var boatTimer    : float;
     private var waveSeqTimer : float;
     private var waveStep     : int;
     private var isWaving     : bool;
+    private var globalVibeCooldown : float; // Prevents the "boom boom boom" stacking
 
-    public function Update(dt: float, currentSpeed : float, rudderMoving : bool) {
-        // 1. Wave Sequence (Thump-ripple-ripple)
+    public function Update(dt: float) {
+        if (globalVibeCooldown > 0) globalVibeCooldown -= dt;
+
         if (isWaving) {
             waveSeqTimer -= dt;
             if (waveSeqTimer <= 0) {
                 ProcessWaveSequence();
             }
         }
-
-        // 2. Constant Hull Thrum
-        // Plays when moving, but not during a wave hit
-        if (!isWaving && currentSpeed > 0.1) {
-            boatTimer -= dt;
-            if (boatTimer <= 0) {
-                // Subtle engine/water vibration
-                theGame.VibrateController(0.1, 0.1, 0.05); 
-                // Speed-based frequency: faster speed = faster pulses
-                boatTimer = 0.9 - (MinF(currentSpeed, 1.0) * 0.4); 
-            }
-        }
-
-        // 3. Rudder Feedback
-        // Only vibrates when the rudder is actually being rotated
-        if (rudderMoving) {
-            theGame.VibrateController(0.15, 0.05, 0.05);
-        }
     }
 
-    public function TriggerWaveImpact() {
-        if (isWaving) return;
+    // Triggered by Physics (Moving) OR a Random Timer (Idle)
+    public function TriggerWaveImpact(isMoving : bool) {
+        if (isWaving || globalVibeCooldown > 0) return;
+
         isWaving = true;
         waveStep = 0;
-        ProcessWaveSequence();
+        
+        // If moving, we use your harder sequence. If idle, a gentle one.
+        if (isMoving) {
+            ProcessWaveSequence(); 
+        } else {
+            ProcessIdleSequence();
+        }
     }
 
     private function ProcessWaveSequence() {
+        globalVibeCooldown = 0.05; // Short safety gap
         switch(waveStep) {
-            case 0: // The Initial Slam (Heavy)
-                theGame.VibrateController(0.8, 0.4, 0.1);
-                waveStep = 1;
-                waveSeqTimer = 0.25; // Silent gap
-                break;
-            case 1: // First Resonance (Medium)
-                theGame.VibrateController(0.4, 0.1, 0.1);
-                waveStep = 2;
-                waveSeqTimer = 0.25; // Silent gap
-                break;
-            case 2: // Final Ripple (Light)
-                theGame.VibrateController(0.15, 0.0, 0.1);
-                waveStep = 0;
-                isWaving = false; 
-                break;
+            case 0: theGame.VibrateController(0.4, 0.2, 0.08); waveSeqTimer = 0.3; waveStep = 1; break; // Slam
+            case 1: theGame.VibrateController(0.2, 0.1, 0.08); waveSeqTimer = 0.3; waveStep = 2; break; // Ripple 1
+            case 2: theGame.VibrateController(0.1, 0.0, 0.08); isWaving = false; break;                // Ripple 2
+        }
+    }
+
+    private function ProcessIdleSequence() {
+        globalVibeCooldown = 0.05;
+        switch(waveStep) {
+            case 0: theGame.VibrateController(0.15, 0.0, 0.08); waveSeqTimer = 0.4; waveStep = 1; break; // Gentle nudge
+            case 1: theGame.VibrateController(0.05, 0.0, 0.08); waveSeqTimer = 0.4; waveStep = 2; break; // Fading
+            case 2: theGame.VibrateController(0.02, 0.0, 0.08); isWaving = false; break;                // Still
+        }
+    }
+
+    public function TriggerRudder() {
+        // Rudder is now much lighter (0.05) and has a cooldown to stop "building up"
+        if (globalVibeCooldown <= 0) {
+            theGame.VibrateController(0.05, 0.05, 0.04);
+            globalVibeCooldown = 0.1; 
         }
     }
 }
@@ -80,39 +77,41 @@ public var boatVibeManager : CBoatVibrationManager;
     return wrappedMethod(entity, vehicleSlot);
 }
 
-@addField(CBoatComponent) 
-public var isRudderMovingThisTick : bool;
+@addField(CBoatComponent) private var idleWaveTimer : float;
 
 @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
-    // Check change before the vanilla code updates rudderDir
-    this.isRudderMovingThisTick = (AbsF(this.rudderDir - value) > 0.001);
+    // Check for change
+    if (AbsF(this.rudderDir - value) > 0.005 && boatVibeManager) {
+        boatVibeManager.TriggerRudder();
+    }
     wrappedMethod(rider, value);
 }
 
 @wrapMethod(CBoatComponent) function OnTick(dt : float) {
-    var speedRatio : float;
+    var isMoving : bool;
     var currentVelZ : float;
-    var fDiff : float;
-
+    
     wrappedMethod(dt);
 
     if (boatVibeManager) {
-        // Calculate speedRatio exactly like vanilla does
-        speedRatio = GetLinearVelocityXY() / GetMaxSpeed();
+        boatVibeManager.Update(dt);
         
-        // Pass the movement data to manager
-        boatVibeManager.Update(dt, speedRatio, isRudderMovingThisTick);
+        // Use the class variable IDLE_SPEED_THRESHOLD
+        isMoving = ( GetLinearVelocityXY() > IDLE_SPEED_THRESHOLD );
 
-        // WAVE DETECTION
-        // We use the same variables the vanilla code just updated in the class
-        fDiff = fr.Z - fr.W;
-        currentVelZ = (frontSlotTransform.W).Z - prevFrontPosZ;
-
-        if ( IsDiving( currentVelZ, prevFrontWaterPosZ, fDiff ) ) {
-            boatVibeManager.TriggerWaveImpact();
+        if (isMoving) {
+            // MOVING: Use physics detection
+            currentVelZ = (frontSlotTransform.W).Z - prevFrontPosZ;
+            if ( IsDiving( currentVelZ, prevFrontWaterPosZ, (fr.Z - fr.W) ) ) {
+                boatVibeManager.TriggerWaveImpact(true);
+            }
+        } else {
+            // IDLE: Use a random timer to simulate gentle lapping water
+            idleWaveTimer -= dt;
+            if (idleWaveTimer <= 0) {
+                boatVibeManager.TriggerWaveImpact(false);
+                idleWaveTimer = RandRangeF(4.0, 7.0); // New idle wave every 4-7 seconds
+            }
         }
-
-        // Reset the rudder flag for the next frame
-        isRudderMovingThisTick = false;
     }
 }
