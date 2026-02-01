@@ -21,32 +21,42 @@ class CBoatVibrationManager extends CObject {
 
     private function ProcessWaveSequence() {
         switch(waveStep) {
+            // Pair 1: The Initial Push
             case 0: 
-                // 1. Big & Short (Initial crest)
-                theGame.VibrateController(0.18, 0.0, 0.2); 
-                waveSeqTimer = 0.7; waveStep = 1; break; 
+                theGame.VibrateController(0.12, 0.0, 0.15); // Short "thump"
+                waveSeqTimer = 0.15; waveStep = 1; break;
             case 1: 
-                // 2. Longer & Weaker (The roll)
-                theGame.VibrateController(0.08, 0.0, 0.6); 
-                waveSeqTimer = 0.9; waveStep = 2; break; 
+                theGame.VibrateController(0.05, 0.0, 0.8);  // Long "glide"
+                waveSeqTimer = 1.0; waveStep = 2; break;
+
+            // Pair 2: The Secondary Roll (slighly different intensity)
             case 2: 
-                // 3. Longest & Weakest (The fade)
-                theGame.VibrateController(0.03, 0.0, 1.0); 
+                theGame.VibrateController(0.08, 0.0, 0.15); 
+                waveSeqTimer = 0.15; waveStep = 3; break;
+            case 3: 
+                theGame.VibrateController(0.03, 0.0, 1.2); 
+                waveSeqTimer = 1.3; waveStep = 4; break;
+
+            // Pair 3: The Deep Wash
+            case 4: 
+                theGame.VibrateController(0.10, 0.0, 0.2); 
+                waveSeqTimer = 0.2; waveStep = 5; break;
+            case 5: 
+                theGame.VibrateController(0.04, 0.0, 1.5); // Very long fade
                 isWaving = false; 
-                globalVibeCooldown = 0.5; break;
+                globalVibeCooldown = 0.2; break; 
         }
     }
 
     public function TriggerIdleNudge() {
         if (isWaving || globalVibeCooldown > 0) return;
-        // Reduced to the absolute floor of perception
-        theGame.VibrateController(0.02, 0.0, 0.3); 
-        globalVibeCooldown = 1.0;
+        // Idle is now a single very soft but long (0.8s) pulse to prevent "shortness"
+        theGame.VibrateController(0.02, 0.0, 0.8); 
+        globalVibeCooldown = 1.5;
     }
 
     public function TriggerRudder() {
         if (globalVibeCooldown <= 0) {
-            // Slightly boosted from 0.01 to 0.03
             theGame.VibrateController(0.03, 0.0, 0.05);
             globalVibeCooldown = 0.15; 
         }
@@ -88,17 +98,16 @@ public var boatVibeManager : CBoatVibrationManager;
             moveWaveTimer -= dt;
             if (moveWaveTimer <= 0) {
                 boatVibeManager.TriggerWaveImpact();
-                // 4 seconds provides a slow, majestic rhythm
-                moveWaveTimer = 4.0; 
+                // Sequence is ~3s long, so 3.2s means a 0.2s gap
+                moveWaveTimer = 3.2; 
             }
         } else {
             idleWaveTimer -= dt;
             if (idleWaveTimer <= 0) {
                 boatVibeManager.TriggerIdleNudge();
-                idleWaveTimer = RandRangeF(6.0, 12.0); 
+                idleWaveTimer = RandRangeF(4.0, 8.0); 
             }
-            // Start moving wave almost immediately upon acceleration
-            moveWaveTimer = 0.4; 
+            moveWaveTimer = 0.2; 
         }
     }
 }
