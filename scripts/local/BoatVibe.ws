@@ -80,37 +80,39 @@ public var boatVibeManager : CBoatVibrationManager;
     return wrappedMethod(entity, vehicleSlot);
 }
 
-// Add a flag to the component to track rudder movement
 @addField(CBoatComponent) 
 public var isRudderMovingThisTick : bool;
 
-// Hook into SetRudderDir to see if the player is actually turning
 @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
-    var change : float;
-    change = AbsF(this.rudderDir - value);
-    
-    // If there is any change, flag it for the manager
-    this.isRudderMovingThisTick = (change > 0.001);
-    
-    return wrappedMethod(rider, value);
+    // Check change before the vanilla code updates rudderDir
+    this.isRudderMovingThisTick = (AbsF(this.rudderDir - value) > 0.001);
+    wrappedMethod(rider, value);
 }
 
-// Hook into OnTick to run the manager
 @wrapMethod(CBoatComponent) function OnTick(dt : float) {
-    // 1. Run vanilla code first to calculate currentSpeed, fDiff, etc.
+    var speedRatio : float;
+    var currentVelZ : float;
+    var fDiff : float;
+
     wrappedMethod(dt);
 
     if (boatVibeManager) {
-        // 2. Run the update using the local variables calculated by vanilla OnTick
-        // Note: we access currentSpeed and the diving logic here
-        boatVibeManager.Update(dt, currentSpeed, isRudderMovingThisTick);
+        // Calculate speedRatio exactly like vanilla does
+        speedRatio = GetLinearVelocityXY() / GetMaxSpeed();
+        
+        // Pass the movement data to manager
+        boatVibeManager.Update(dt, speedRatio, isRudderMovingThisTick);
 
-        // 3. Wave Detection (Matches the vanilla SoundEvent logic)
-        if ( IsDiving( currentFrontVelZ, prevFrontWaterPosZ, (fr.Z - fr.W) ) ) {
+        // WAVE DETECTION
+        // We use the same variables the vanilla code just updated in the class
+        fDiff = fr.Z - fr.W;
+        currentVelZ = (frontSlotTransform.W).Z - prevFrontPosZ;
+
+        if ( IsDiving( currentVelZ, prevFrontWaterPosZ, fDiff ) ) {
             boatVibeManager.TriggerWaveImpact();
         }
 
-        // Reset rudder flag for next tick
+        // Reset the rudder flag for the next frame
         isRudderMovingThisTick = false;
     }
 }
