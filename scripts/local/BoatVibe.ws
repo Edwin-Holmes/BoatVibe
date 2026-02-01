@@ -30,7 +30,7 @@ class CBoatVibrationManager extends CObject {
                     break; // Long glide + 0.6s silence
 
             // Pair 2: Light Hit -> Medium Glide
-            case 2: theGame.VibrateController(0.06, 0.0, 0.10); 
+            case 2: theGame.VibrateController(0.04, 0.0, 0.10); 
                     waveSeqTimer = 0.10; 
                     waveStep = 3; 
                     break;
@@ -40,7 +40,7 @@ class CBoatVibrationManager extends CObject {
                     break; // Med glide + 0.6s silence
 
             // Pair 3: Softest Hit -> Short Glide
-            case 4: theGame.VibrateController(0.04, 0.0, 0.08); 
+            case 4: theGame.VibrateController(0.02, 0.0, 0.08); 
                     waveSeqTimer = 0.08; 
                     waveStep = 5; 
                     break;
