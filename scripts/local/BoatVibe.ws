@@ -127,7 +127,7 @@ public var boatVibeManager : CBoatVibrationManager;
 
 @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
     // Check for change
-    if (AbsF(this.rudderDir - value) > 0.005 && boatVibeManager) {
+    if (AbsF(this.rudderDir - value) > 0.005 && AbsF(this.rudderDir - value) < 0.5 && boatVibeManager) {
         boatVibeManager.TriggerRudder();
     }
     wrappedMethod(rider, value);
