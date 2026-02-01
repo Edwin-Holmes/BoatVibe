@@ -2,10 +2,8 @@ class CBoatVibrationManager extends CObject {
     private var waveSeqTimer : float;
     private var waveStep     : int;
     private var isWaving     : bool;
-    private var globalVibeCooldown : float;
 
     public function Update(dt: float) {
-        if (globalVibeCooldown > 0) globalVibeCooldown -= dt;
         if (isWaving) {
             waveSeqTimer -= dt;
             if (waveSeqTimer <= 0) ProcessWaveSequence();
@@ -13,7 +11,7 @@ class CBoatVibrationManager extends CObject {
     }
 
     public function TriggerWaveImpact() {
-        if (isWaving || globalVibeCooldown > 0) return;
+        if (isWaving) return;
         isWaving = true;
         waveStep = 0;
         ProcessWaveSequence();
@@ -21,45 +19,36 @@ class CBoatVibrationManager extends CObject {
 
     private function ProcessWaveSequence() {
         switch(waveStep) {
-            // Pair 1: The Initial Push
-            case 0: 
-                theGame.VibrateController(0.12, 0.0, 0.15); // Short "thump"
-                waveSeqTimer = 0.15; waveStep = 1; break;
-            case 1: 
-                theGame.VibrateController(0.05, 0.0, 0.8);  // Long "glide"
-                waveSeqTimer = 1.0; waveStep = 2; break;
+            // Pair 1: Moderate Hit -> Longest Glide
+            case 0: theGame.VibrateController(0.08, 0.0, 0.12); waveSeqTimer = 0.12; waveStep = 1; break;
+            case 1: theGame.VibrateController(0.01, 0.0, 1.20); waveSeqTimer = 1.80; waveStep = 2; break; // Long glide + 0.6s silence
 
-            // Pair 2: The Secondary Roll (slighly different intensity)
-            case 2: 
-                theGame.VibrateController(0.08, 0.0, 0.15); 
-                waveSeqTimer = 0.15; waveStep = 3; break;
-            case 3: 
-                theGame.VibrateController(0.03, 0.0, 1.2); 
-                waveSeqTimer = 1.3; waveStep = 4; break;
+            // Pair 2: Light Hit -> Medium Glide
+            case 2: theGame.VibrateController(0.06, 0.0, 0.10); waveSeqTimer = 0.10; waveStep = 3; break;
+            case 3: theGame.VibrateController(0.01, 0.0, 0.80); waveSeqTimer = 1.40; waveStep = 4; break; // Med glide + 0.6s silence
 
-            // Pair 3: The Deep Wash
-            case 4: 
-                theGame.VibrateController(0.10, 0.0, 0.2); 
-                waveSeqTimer = 0.2; waveStep = 5; break;
-            case 5: 
-                theGame.VibrateController(0.04, 0.0, 1.5); // Very long fade
-                isWaving = false; 
-                globalVibeCooldown = 0.2; break; 
+            // Pair 3: Softest Hit -> Short Glide
+            case 4: theGame.VibrateController(0.04, 0.0, 0.08); waveSeqTimer = 0.08; waveStep = 5; break;
+            case 5: theGame.VibrateController(0.01, 0.0, 0.50); isWaving = false; break;
         }
+    }
+
+    public function Clear() {
+        isWaving = false;
+        waveStep = 0;
+        waveSeqTimer = 0;
+        theGame.VibrateController(0.0, 0.0, 0.0); 
     }
 
     public function TriggerIdleNudge() {
-        if (isWaving || globalVibeCooldown > 0) return;
-        // Idle is now a single very soft but long (0.8s) pulse to prevent "shortness"
-        theGame.VibrateController(0.02, 0.0, 0.8); 
-        globalVibeCooldown = 1.5;
+        if (isWaving) return;
+        // Just the "Glide" portion for idle, very soft and long
+        theGame.VibrateController(0.01, 0.0, 1.0); 
     }
 
     public function TriggerRudder() {
-        if (globalVibeCooldown <= 0) {
-            theGame.VibrateController(0.03, 0.0, 0.05);
-            globalVibeCooldown = 0.15; 
-        }
+        // A very brief, crisp mechanical tick
+        theGame.VibrateController(0.04, 0.0, 0.04);
     }
 }
 
@@ -91,23 +80,30 @@ public var boatVibeManager : CBoatVibrationManager;
     wrappedMethod(dt);
 
     if (boatVibeManager) {
-        boatVibeManager.Update(dt);
         isMoving = ( GetLinearVelocityXY() > IDLE_SPEED_THRESHOLD );
 
         if (isMoving) {
+            boatVibeManager.Update(dt);
             moveWaveTimer -= dt;
+            
             if (moveWaveTimer <= 0) {
                 boatVibeManager.TriggerWaveImpact();
-                // Sequence is ~3s long, so 3.2s means a 0.2s gap
-                moveWaveTimer = 3.2; 
+                // Sequence takes ~4s to play including silences.
+                // 5.0s ensures a full second of calm before the cycle repeats.
+                moveWaveTimer = 5.0; 
             }
         } else {
+            // Kill vibrations immediately when button released
+            if (moveWaveTimer > 0) {
+                boatVibeManager.Clear();
+                moveWaveTimer = 0;
+            }
+
             idleWaveTimer -= dt;
             if (idleWaveTimer <= 0) {
                 boatVibeManager.TriggerIdleNudge();
-                idleWaveTimer = RandRangeF(4.0, 8.0); 
+                idleWaveTimer = RandRangeF(7.0, 12.0); 
             }
-            moveWaveTimer = 0.2; 
         }
     }
 }
