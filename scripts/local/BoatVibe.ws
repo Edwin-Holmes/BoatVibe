@@ -2,7 +2,7 @@ class CBoatVibrationManager extends CObject {
     private var waveSeqTimer : float;
     private var waveStep     : int;
     private var isWaving     : bool;
-    private var globalVibeCooldown : float; // Prevents the "boom boom boom" stacking
+    private var globalVibeCooldown : float;
 
     public function Update(dt: float) {
         if (globalVibeCooldown > 0) globalVibeCooldown -= dt;
@@ -15,45 +15,50 @@ class CBoatVibrationManager extends CObject {
         }
     }
 
-    // Triggered by Physics (Moving) OR a Random Timer (Idle)
-    public function TriggerWaveImpact(isMoving : bool) {
+    public function TriggerWaveImpact() {
         if (isWaving || globalVibeCooldown > 0) return;
-
         isWaving = true;
         waveStep = 0;
-        
-        // If moving, we use your harder sequence. If idle, a gentle one.
-        if (isMoving) {
-            ProcessWaveSequence(); 
-        } else {
-            ProcessIdleSequence();
-        }
+        ProcessWaveSequence();
     }
 
     private function ProcessWaveSequence() {
-        globalVibeCooldown = 0.05; // Short safety gap
+        // We use longer durations (0.2s+) to make it feel fluid/heavy
         switch(waveStep) {
-            case 0: theGame.VibrateController(0.4, 0.2, 0.08); waveSeqTimer = 0.3; waveStep = 1; break; // Slam
-            case 1: theGame.VibrateController(0.2, 0.1, 0.08); waveSeqTimer = 0.3; waveStep = 2; break; // Ripple 1
-            case 2: theGame.VibrateController(0.1, 0.0, 0.08); isWaving = false; break;                // Ripple 2
-        }
-    }
-
-    private function ProcessIdleSequence() {
-        globalVibeCooldown = 0.05;
-        switch(waveStep) {
-            case 0: theGame.VibrateController(0.15, 0.0, 0.08); waveSeqTimer = 0.4; waveStep = 1; break; // Gentle nudge
-            case 1: theGame.VibrateController(0.05, 0.0, 0.08); waveSeqTimer = 0.4; waveStep = 2; break; // Fading
-            case 2: theGame.VibrateController(0.02, 0.0, 0.08); isWaving = false; break;                // Still
+            case 0: 
+                // 1. Big & Short
+                theGame.VibrateController(0.4, 0.2, 0.15); 
+                waveSeqTimer = 0.5; // Long gap for fluidity
+                waveStep = 1; 
+                break;
+            case 1: 
+                // 2. Longer & Weaker
+                theGame.VibrateController(0.15, 0.1, 0.3); 
+                waveSeqTimer = 0.6; // Even longer gap
+                waveStep = 2; 
+                break;
+            case 2: 
+                // 3. Longest & Weakest (fading out)
+                theGame.VibrateController(0.05, 0.0, 0.5); 
+                isWaving = false; 
+                globalVibeCooldown = 0.4; // Prevents immediate re-trigger
+                break;
         }
     }
 
     public function TriggerRudder() {
-        // Rudder is now much lighter (0.05) and has a cooldown to stop "building up"
         if (globalVibeCooldown <= 0) {
-            theGame.VibrateController(0.05, 0.05, 0.04);
-            globalVibeCooldown = 0.1; 
+            // Extremelly soft tick
+            theGame.VibrateController(0.02, 0.02, 0.04);
+            globalVibeCooldown = 0.2; 
         }
+    }
+    
+    public function TriggerIdleNudge() {
+        if (isWaving || globalVibeCooldown > 0) return;
+        // Just a single very soft "sway" feeling for idle
+        theGame.VibrateController(0.05, 0.0, 0.4);
+        globalVibeCooldown = 1.0;
     }
 }
 
@@ -96,21 +101,21 @@ public var boatVibeManager : CBoatVibrationManager;
     if (boatVibeManager) {
         boatVibeManager.Update(dt);
         
-        // Use the class variable IDLE_SPEED_THRESHOLD
         isMoving = ( GetLinearVelocityXY() > IDLE_SPEED_THRESHOLD );
 
         if (isMoving) {
-            // MOVING: Use physics detection
+            // Re-calculating currentVelZ for the diving check
             currentVelZ = (frontSlotTransform.W).Z - prevFrontPosZ;
+            
             if ( IsDiving( currentVelZ, prevFrontWaterPosZ, (fr.Z - fr.W) ) ) {
-                boatVibeManager.TriggerWaveImpact(true);
+                boatVibeManager.TriggerWaveImpact();
             }
         } else {
-            // IDLE: Use a random timer to simulate gentle lapping water
+            // IDLE: Random gentle nudge
             idleWaveTimer -= dt;
             if (idleWaveTimer <= 0) {
-                boatVibeManager.TriggerWaveImpact(false);
-                idleWaveTimer = RandRangeF(4.0, 7.0); // New idle wave every 4-7 seconds
+                boatVibeManager.TriggerIdleNudge();
+                idleWaveTimer = RandRangeF(5.0, 8.0); 
             }
         }
     }
