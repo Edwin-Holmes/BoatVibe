@@ -8,13 +8,12 @@ class CBoatVibrationManager extends CObject {
         var currentSpeed     : float;
         var sailingMaxSpeed  : float;
 
-        // 1. Calculate Speed Ratio
         sailingMaxSpeed = boat.GetMaxSpeed();
         if (sailingMaxSpeed > 0) {
             currentSpeed = boat.GetLinearVelocityXY() / sailingMaxSpeed;
         }
 
-        // 2. Wave Sequence Logic (The "Thump-ripple-ripple")
+        // 1. Wave Sequence Logic (Thump -> gap -> ripple -> gap -> ripple)
         if (isWaving) {
             waveSeqTimer -= dt;
             if (waveSeqTimer <= 0) {
@@ -22,48 +21,48 @@ class CBoatVibrationManager extends CObject {
             }
         }
 
-        // 3. Constant Hull Thrum (Only play if not currently doing a wave hit)
+        // 2. Constant Hull Thrum (The "Engine/Water" hum)
+        // Only plays if not currently hitting a wave
         if (!isWaving && currentSpeed > 0.1) {
             boatTimer -= dt;
             if (boatTimer <= 0) {
-                cvsVibrate(0, 0.01); 
-                boatTimer = 0.9 - (currentSpeed * 0.3); 
+                // Low intensity buzz to feel the speed
+                theGame.VibrateController(0.1, 0.1, 0.05); 
+                boatTimer = 0.8 - (currentSpeed * 0.3); 
             }
         }
 
-        // 4. Rudder Tension
+        // 3. Rudder Tension (Feel the wood creaking during turns)
         if (boat.GetIsChangingSteer()) {
-            cvsVibrate(1, 0.1);
+            theGame.VibrateController(0.2, 0.0, 0.1);
         }
     }
 
     public function TriggerWaveImpact(isHeavy : bool) {
-        // Don't restart if we are already in the middle of a wave thump
         if (isWaving) return;
 
         isWaving = true;
         waveStep = 0;
-        
-        // Start immediately
         ProcessWaveSequence();
     }
 
     private function ProcessWaveSequence() {
         switch(waveStep) {
-            case 0: // The Initial Hit
-                cvsVibrate(2, 0.15);
+            case 0: // The Big Initial Slam
+                // Heavy on the low freq, sharp on the high
+                theGame.VibrateController(0.8, 0.6, 0.1);
                 waveStep = 1;
-                waveSeqTimer = 0.15; // Gap to next ripple
+                waveSeqTimer = 0.25; // Silent gap for the motor to stop
                 break;
-            case 1: // First Resonance
-                cvsVibrate(1, 0.2);
+            case 1: // The First Ripple
+                theGame.VibrateController(0.4, 0.2, 0.12);
                 waveStep = 2;
-                waveSeqTimer = 0.2;
+                waveSeqTimer = 0.25; // Another silent gap
                 break;
-            case 2: // Final Ripple
-                cvsVibrate(1, 0.1);
+            case 2: // The Final Faint Ripple
+                theGame.VibrateController(0.2, 0.0, 0.1);
                 waveStep = 0;
-                isWaving = false; // Sequence finished
+                isWaving = false; 
                 break;
         }
     }
@@ -89,35 +88,35 @@ public var boatVibeManager : CBoatVibrationManager;
     return wrappedMethod(entity, vehicleSlot);
 }
 
-// Inject logic into the main Tick
-@wrapMethod(CBoatComponent) function OnTick(dt : float) {
-    var currentFrontPosZ : float;
-    var currentFrontVelZ : float;
-    var fDiff : float;
-
-    // Run original code first to populate the physics variables
-    wrappedMethod(dt);
-
-    if (boatVibeManager) {
-        // Run constant speed/rudder logic
-        boatVibeManager.Update(dt, this);
-
-        // Catch the Wave Slap!
-        // We use the same 'IsDiving' check CDPR uses for sound/effects
-        fDiff = fr.Z - fr.W;
-        currentFrontPosZ = (frontSlotTransform.W).Z;
-        currentFrontVelZ = currentFrontPosZ - prevFrontPosZ;
-
-        if ( IsDiving( currentFrontVelZ, prevFrontWaterPosZ, fDiff ) ) {
-            // If the front splash effect is currently active, it's a hard impact
-            boatVibeManager.TriggerWaveImpact(boatEntity.IsEffectActive('front_splash'));
-        }
-    }
-}
-
 @addMethod(CBoatComponent)
 public function GetIsChangingSteer() : bool 
 {
-    // Inside this added method, you have full access to private variables
-    return this.isChangingSteer;
+    // AbsF check on steerTarget covers holding the turn AND active movement
+    return AbsF(this.steerTarget) > 0.1;
+}
+
+@wrapMethod(CBoatComponent) function OnTick(dt : float) {
+    var currentFrontPosZ, currentFrontVelZ, fDiff : float;
+
+    wrappedMethod(dt);
+
+    if (boatVibeManager) {
+        boatVibeManager.Update(dt, this);
+
+        // WAVE DETECTION
+        // Prioritize the visual splash effect as the 'Heavy' trigger
+        if ( boatEntity.IsEffectActive('front_splash') ) {
+            boatVibeManager.TriggerWaveImpact(true);
+        } 
+        else {
+            fDiff = fr.Z - fr.W;
+            currentFrontPosZ = (frontSlotTransform.W).Z;
+            currentFrontVelZ = currentFrontPosZ - prevFrontPosZ;
+
+            // Physics fallback for smaller waves
+            if ( IsDiving( currentFrontVelZ, prevFrontWaterPosZ, fDiff ) ) {
+                boatVibeManager.TriggerWaveImpact(false);
+            }
+        }
+    }
 }
