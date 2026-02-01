@@ -9,9 +9,7 @@ class CBoatVibrationManager extends CObject {
 
         if (isWaving) {
             waveSeqTimer -= dt;
-            if (waveSeqTimer <= 0) {
-                ProcessWaveSequence();
-            }
+            if (waveSeqTimer <= 0) ProcessWaveSequence();
         }
     }
 
@@ -23,42 +21,36 @@ class CBoatVibrationManager extends CObject {
     }
 
     private function ProcessWaveSequence() {
-        // We use longer durations (0.2s+) to make it feel fluid/heavy
         switch(waveStep) {
             case 0: 
                 // 1. Big & Short
-                theGame.VibrateController(0.4, 0.2, 0.15); 
-                waveSeqTimer = 0.5; // Long gap for fluidity
-                waveStep = 1; 
-                break;
+                theGame.VibrateController(0.25, 0.08, 0.12); 
+                waveSeqTimer = 0.5; waveStep = 1; break; 
             case 1: 
                 // 2. Longer & Weaker
-                theGame.VibrateController(0.15, 0.1, 0.3); 
-                waveSeqTimer = 0.6; // Even longer gap
-                waveStep = 2; 
-                break;
+                theGame.VibrateController(0.1, 0.04, 0.3); 
+                waveSeqTimer = 0.6; waveStep = 2; break; 
             case 2: 
-                // 3. Longest & Weakest (fading out)
-                theGame.VibrateController(0.05, 0.0, 0.5); 
+                // 3. Longest & Weakest
+                theGame.VibrateController(0.03, 0.0, 0.5); 
                 isWaving = false; 
-                globalVibeCooldown = 0.4; // Prevents immediate re-trigger
-                break;
+                globalVibeCooldown = 0.3; break;
         }
+    }
+
+    public function TriggerIdleNudge() {
+        if (isWaving || globalVibeCooldown > 0) return;
+        // Tiny nudge for idle
+        theGame.VibrateController(0.03, 0.0, 0.2); 
+        globalVibeCooldown = 0.5;
     }
 
     public function TriggerRudder() {
         if (globalVibeCooldown <= 0) {
-            // Extremelly soft tick
-            theGame.VibrateController(0.02, 0.02, 0.04);
+            // Barely-there rudder tick
+            theGame.VibrateController(0.01, 0.0, 0.04);
             globalVibeCooldown = 0.2; 
         }
-    }
-    
-    public function TriggerIdleNudge() {
-        if (isWaving || globalVibeCooldown > 0) return;
-        // Just a single very soft "sway" feeling for idle
-        theGame.VibrateController(0.05, 0.0, 0.4);
-        globalVibeCooldown = 1.0;
     }
 }
 
@@ -83,18 +75,10 @@ public var boatVibeManager : CBoatVibrationManager;
 }
 
 @addField(CBoatComponent) private var idleWaveTimer : float;
-
-@wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
-    // Check for change
-    if (AbsF(this.rudderDir - value) > 0.005 && boatVibeManager) {
-        boatVibeManager.TriggerRudder();
-    }
-    wrappedMethod(rider, value);
-}
+@addField(CBoatComponent) private var moveWaveTimer : float;
 
 @wrapMethod(CBoatComponent) function OnTick(dt : float) {
     var isMoving : bool;
-    var currentVelZ : float;
     
     wrappedMethod(dt);
 
@@ -104,19 +88,30 @@ public var boatVibeManager : CBoatVibrationManager;
         isMoving = ( GetLinearVelocityXY() > IDLE_SPEED_THRESHOLD );
 
         if (isMoving) {
-            // Re-calculating currentVelZ for the diving check
-            currentVelZ = (frontSlotTransform.W).Z - prevFrontPosZ;
+            moveWaveTimer -= dt;
             
-            if ( IsDiving( currentVelZ, prevFrontWaterPosZ, (fr.Z - fr.W) ) ) {
+            // REGULAR RHYTHM: No more randomness, just steady sailing beats
+            if (moveWaveTimer <= 0) {
                 boatVibeManager.TriggerWaveImpact();
+                moveWaveTimer = 3.0; // The "Sailing Rhythm" interval
             }
         } else {
-            // IDLE: Random gentle nudge
+            // RANDOM IDLE: Keeps the boat feeling "parked" in live water
             idleWaveTimer -= dt;
             if (idleWaveTimer <= 0) {
                 boatVibeManager.TriggerIdleNudge();
-                idleWaveTimer = RandRangeF(5.0, 8.0); 
+                idleWaveTimer = RandRangeF(5.0, 10.0); 
             }
+            // Reset move timer so sailing always starts with a beat immediately
+            moveWaveTimer = 0.5; 
         }
     }
+}
+
+@wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
+    // Check for change
+    if (AbsF(this.rudderDir - value) > 0.005 && boatVibeManager) {
+        boatVibeManager.TriggerRudder();
+    }
+    wrappedMethod(rider, value);
 }
