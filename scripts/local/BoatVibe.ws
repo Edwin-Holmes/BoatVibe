@@ -1,9 +1,12 @@
 class CBoatVibrationManager extends CObject {
-    private var boatTimer : float;
+    private var boatTimer    : float;
+    private var waveSeqTimer : float;
+    private var waveStep     : int;
+    private var isWaving     : bool;
 
     public function Update(dt: float, boat : CBoatComponent) {
-        var currentSpeed : float;
-        var sailingMaxSpeed : float;
+        var currentSpeed     : float;
+        var sailingMaxSpeed  : float;
 
         // 1. Calculate Speed Ratio
         sailingMaxSpeed = boat.GetMaxSpeed();
@@ -11,30 +14,57 @@ class CBoatVibrationManager extends CObject {
             currentSpeed = boat.GetLinearVelocityXY() / sailingMaxSpeed;
         }
 
-        // 2. Constant Hull Thrum (The vibration of the water)
-        if (currentSpeed > 0.1) {
-            boatTimer -= dt;
-            if (boatTimer <= 0) {
-                // VeryLight (0) for the water texture
-                cvsVibrate(0, 0.1); 
-                
-                // Interval scales: faster speed = faster heartbeat
-                boatTimer = 0.9 - (currentSpeed * 0.6); 
+        // 2. Wave Sequence Logic (The "Thump-ripple-ripple")
+        if (isWaving) {
+            waveSeqTimer -= dt;
+            if (waveSeqTimer <= 0) {
+                ProcessWaveSequence();
             }
         }
 
-        // 3. Rudder Tension (Feel the wood creak while turning)
-        // isChangingSteer is the internal flag for moving the rudder
+        // 3. Constant Hull Thrum (Only play if not currently doing a wave hit)
+        if (!isWaving && currentSpeed > 0.1) {
+            boatTimer -= dt;
+            if (boatTimer <= 0) {
+                cvsVibrate(0, 0.01); 
+                boatTimer = 0.9 - (currentSpeed * 0.3); 
+            }
+        }
+
+        // 4. Rudder Tension
         if (boat.GetIsChangingSteer()) {
-            cvsVibrate(0, 0.05);
+            cvsVibrate(1, 0.1);
         }
     }
 
     public function TriggerWaveImpact(isHeavy : bool) {
-        if (isHeavy) {
-            cvsVibrate(2, 0.25); // Hard thud for cresting waves
-        } else {
-            cvsVibrate(1, 0.1);  // Light slap for small chop
+        // Don't restart if we are already in the middle of a wave thump
+        if (isWaving) return;
+
+        isWaving = true;
+        waveStep = 0;
+        
+        // Start immediately
+        ProcessWaveSequence();
+    }
+
+    private function ProcessWaveSequence() {
+        switch(waveStep) {
+            case 0: // The Initial Hit
+                cvsVibrate(2, 0.15);
+                waveStep = 1;
+                waveSeqTimer = 0.15; // Gap to next ripple
+                break;
+            case 1: // First Resonance
+                cvsVibrate(1, 0.2);
+                waveStep = 2;
+                waveSeqTimer = 0.2;
+                break;
+            case 2: // Final Ripple
+                cvsVibrate(1, 0.1);
+                waveStep = 0;
+                isWaving = false; // Sequence finished
+                break;
         }
     }
 }
