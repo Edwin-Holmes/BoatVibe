@@ -3,21 +3,21 @@ class CBoatVibrationManager extends CObject {
     private var waveStep     : int;
     private var isWaving     : bool;
 
-    public function Update(dt: float) {
+    public function Update(dt: float) {                                 //Called OnTick
         if (isWaving) {
-            waveSeqTimer -= dt;
-            if (waveSeqTimer <= 0) ProcessWaveSequence();
+            waveSeqTimer -= dt;                                         //Decrease timer       
+            if (waveSeqTimer <= 0) ProcessWaveSequence();               //If timer is 0, process next wave
         }
     }
 
-    public function TriggerWaveImpact() {
+    public function TriggerMovingSequence() {
         if (isWaving) return;
         isWaving = true;
         waveStep = 0;
-        ProcessWaveSequence();
+        ProcessMovingSequence();
     }
 
-    private function ProcessWaveSequence() {
+    private function ProcessWaveSequence() {                            //Called when wave is triggered
         switch(waveStep) {
             // Pair 1: Moderate Hit -> Longest Glide
             case 0: theGame.VibrateController(0.05, 0.0, 0.12); 
@@ -67,6 +67,11 @@ class CBoatVibrationManager extends CObject {
         // A very brief, crisp mechanical tick
         theGame.VibrateController(0.0, 0.1, 0.001);
     }
+
+    public function TriggerWaveImpact() {
+        // A sharp, distinct jolt that cuts through everything
+        theGame.VibrateControllerVeryHard(); 
+    }
 }
 
 @addField(CBoatComponent) 
@@ -102,14 +107,23 @@ public var boatVibeManager : CBoatVibrationManager;
         if (isMoving) {
             boatVibeManager.Update(dt);
             moveWaveTimer -= dt;
-            
+
+            // 1. Rhythmic Timing
             if (moveWaveTimer <= 0) {
+                boatVibeManager.TriggerMovingSequence();
+                moveWaveTimer = 4.5;
+            }
+
+            // 2. Physical Impact Linked to Splash Effect
+            if ( this.IsEffectActive('front_splash') ) {
                 boatVibeManager.TriggerWaveImpact();
-                // Sequence takes ~4s to play including silences.
-                // 5.0s ensures a full second of calm before the cycle repeats.
-                moveWaveTimer = 4.5; 
             }
         } else {
+            // 3. Idle Vibrations Linked to Idle Splash
+            if ( this.IsEffectActive('idle_splash') ) {
+                // Optional: Trigger a very soft nudge when the idle ripple plays
+                boatVibeManager.TriggerIdleNudge();
+            }
             // Kill vibrations immediately when button released
             if (moveWaveTimer > 0) {
                 boatVibeManager.Clear();
