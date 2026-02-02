@@ -2,8 +2,13 @@ class CBoatVibrationManager extends CObject {
     private var waveSeqTimer : float;
     private var waveStep     : int;
     private var isWaving     : bool;
+    private var splashCooldown : float;
 
     public function Update(dt: float) {                                 //Called OnTick
+        if (splashCooldown > 0) {
+            splashCooldown -= dt;
+        }
+        
         if (isWaving) {
             waveSeqTimer -= dt;                                         //Decrease timer       
             if (waveSeqTimer <= 0) ProcessMovingSequence();               //If timer is 0, process next wave
@@ -69,8 +74,10 @@ class CBoatVibrationManager extends CObject {
     }
 
     public function TriggerWaveImpact() {
-        // A sharp, distinct jolt that cuts through everything
-        theGame.VibrateControllerVeryHard(); 
+        if (splashCooldown <= 0) {
+            theGame.VibrateControllerVeryHard(); 
+            splashCooldown = 2.0; // Set the 2-second buffer
+        }
     }
 }
 
