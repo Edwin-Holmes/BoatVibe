@@ -115,15 +115,15 @@ public var boatVibeManager : CBoatVibrationManager;
             }
 
             // 2. Physical Impact Linked to Splash Effect
-            if ( boatEntity.IsEffectActive('front_splash') ) {
+            /* if ( boatEntity.IsEffectActive('front_splash') ) {
                 boatVibeManager.TriggerWaveImpact();
-            }
+            } */
         } else {
             // 3. Idle Vibrations Linked to Idle Splash
-            if ( boatEntity.IsEffectActive('idle_splash') ) {
+            /* if ( boatEntity.IsEffectActive('idle_splash') ) {
                 // Optional: Trigger a very soft nudge when the idle ripple plays
                 boatVibeManager.TriggerIdleNudge();
-            }
+            } */
             // Kill vibrations immediately when button released
             if (moveWaveTimer > 0) {
                 boatVibeManager.Clear();
