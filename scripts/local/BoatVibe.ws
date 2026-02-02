@@ -1,28 +1,25 @@
 class CBoatVibrationManager extends CObject {
-    // Current physical states
-    private var lastTilt   : float; // Left/Right Roll
-    private var lastPitch  : float; // Front/Back Pitch
-    private var lastHeave  : float; // Vertical Altitude
-
-    // Direction trackers (1.0 = increasing, -1.0 = decreasing)
-    private var lastTiltDir  : float;
-    private var lastPitchDir : float;
-    private var lastHeaveDir : float;
+    private var lastTilt, lastPitch, lastHeave : float;
+    private var lastTiltDir, lastPitchDir, lastHeaveDir : float;
+    
+    // The "Padding" Timer
+    private var vibeCooldown : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var currentTilt, currentPitch, currentHeave : float;
         var diffTilt, diffPitch, diffHeave : float;
         var curTiltDir, curPitchDir, curHeaveDir : float;
         
-        var rumbleL, rumbleH : float;
-        var duration : float;
+        // 1. Tick the cooldown
+        if (vibeCooldown > 0) {
+            vibeCooldown -= dt;
+        }
 
-        // 1. Calculate current boat orientation from the buoyancy cross
-        currentTilt  = lV.Z - rV.Z;                   // Positive = Leaning Right
-        currentPitch = fV.Z - bV.Z;                   // Positive = Nose Up
-        currentHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0; // Average height
+        // 2. Physical States
+        currentTilt  = lV.Z - rV.Z;
+        currentPitch = fV.Z - bV.Z;
+        currentHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        // 2. Calculate deltas to find direction
         diffTilt  = currentTilt - lastTilt;
         diffPitch = currentPitch - lastPitch;
         diffHeave = currentHeave - lastHeave;
@@ -31,44 +28,34 @@ class CBoatVibrationManager extends CObject {
         curPitchDir = GetSign(diffPitch);
         curHeaveDir = GetSign(diffHeave);
 
-        // 3. APEX DETECTION LOGIC
-        // We only trigger a vibe when the direction flips (Reached a peak or trough)
-
-        // --- ROLL (Side to Side) ---
-        // Uses HFM to simulate weight shift/tension
-        if (curTiltDir != lastTiltDir && AbsF(currentTilt) > 0.08) {
-            rumbleH = MinF(0.12, AbsF(currentTilt) * 0.2);
-            theGame.VibrateController(0.0, rumbleH, 0.06);
+        // 3. APEX DETECTION (Only if cooldown is finished)
+        if (vibeCooldown <= 0) {
+            
+            // --- HEAVE (Vertical Impact) ---
+            if (curHeaveDir == 1.0 && lastHeaveDir == -1.0 && AbsF(diffHeave) > 0.002) {
+                theGame.VibrateController(0.15, 0.0, 0.05); // Short sharp thump
+                vibeCooldown = 0.3; // 0.3s of silence padding
+            }
+            // --- PITCH (Nose tilt) ---
+            else if (curPitchDir != lastPitchDir && AbsF(currentPitch) > 0.15) {
+                theGame.VibrateController(0.1, 0.0, 0.05);
+                vibeCooldown = 0.25;
+            }
+            // --- ROLL (Side sway) ---
+            else if (curTiltDir != lastTiltDir && AbsF(currentTilt) > 0.12) {
+                theGame.VibrateController(0.0, 0.08, 0.05);
+                vibeCooldown = 0.2;
+            }
         }
 
-        // --- PITCH (Front to Back) ---
-        // Uses LFM for the "thud" of the nose hitting or lifting
-        if (curPitchDir != lastPitchDir && AbsF(currentPitch) > 0.1) {
-            rumbleL = MinF(0.15, AbsF(currentPitch) * 0.3);
-            theGame.VibrateController(rumbleL, 0.0, 0.08);
-        }
-
-        // --- HEAVE (Vertical Slam) ---
-        // Specifically trigger when the boat stops falling and starts rising (Bottom of wave)
-        if (curHeaveDir == 1.0 && lastHeaveDir == -1.0 && AbsF(diffHeave) > 0.002) {
-            // A combined jolt for hitting the "floor" of the water
-            theGame.VibrateController(0.12, 0.04, 0.1);
-        }
-
-        // 4. State Storage
+        // 4. Update states
         lastTilt  = currentTilt;
         lastPitch = currentPitch;
         lastHeave = currentHeave;
 
-        // Only update direction if there was meaningful movement (filters micro-noise)
-        if (AbsF(diffTilt)  > 0.0001) lastTiltDir  = curTiltDir;
-        if (AbsF(diffPitch) > 0.0001) lastPitchDir = curPitchDir;
-        if (AbsF(diffHeave) > 0.0001) lastHeaveDir = curHeaveDir;
-    }
-
-    public function TriggerRudder() {
-        // Light mechanical click for steering
-        theGame.VibrateController(0.0, 0.08, 0.04);
+        if (AbsF(diffTilt)  > 0.001) lastTiltDir  = curTiltDir;
+        if (AbsF(diffPitch) > 0.001) lastPitchDir = curPitchDir;
+        if (AbsF(diffHeave) > 0.001) lastHeaveDir = curHeaveDir;
     }
 
     private function GetSign(val : float) : float {
