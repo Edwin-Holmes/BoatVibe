@@ -70,7 +70,7 @@ class CBoatVibrationManager extends CObject {
 
     public function TriggerRudder() {
         // A very brief, crisp mechanical tick
-        theGame.VibrateController(0.0, 0.1, 0.001);
+        theGame.VibrateController(0.0, 0.1, 0.04);
     }
 
     public function TriggerWaveImpact() {
@@ -109,7 +109,7 @@ public var boatVibeManager : CBoatVibrationManager;
     wrappedMethod(dt);
 
     if (boatVibeManager) {
-        isMoving = ( GetLinearVelocityXY() > IDLE_SPEED_THRESHOLD );
+        isMoving = ( GetCurrentSpeed() > IDLE_SPEED_THRESHOLD );
 
         if (isMoving) {
             boatVibeManager.Update(dt);
@@ -122,12 +122,12 @@ public var boatVibeManager : CBoatVibrationManager;
             }
 
             // 2. Physical Impact Linked to Splash Effect
-            /* if ( boatEntity.IsEffectActive('front_splash') ) {
+            if ( boatEntity.IsEffectActive('front_splash') ) {
                 boatVibeManager.TriggerWaveImpact();
-            } */
+            }
         } else {
-            // 3. Idle Vibrations Linked to Idle Splash
-            /* if ( boatEntity.IsEffectActive('idle_splash') ) {
+/*             // 3. Idle Vibrations Linked to Idle Splash
+            if ( boatEntity.IsEffectActive('idle_splash') ) {
                 // Optional: Trigger a very soft nudge when the idle ripple plays
                 boatVibeManager.TriggerIdleNudge();
             } */
@@ -148,7 +148,7 @@ public var boatVibeManager : CBoatVibrationManager;
 
 @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
     // Check for change
-    if (AbsF(this.rudderDir - value) > 0.005 && AbsF(this.rudderDir - value) < 0.5 && boatVibeManager) {
+    if (steerSound && boatVibeManager) {
         boatVibeManager.TriggerRudder();
     }
     wrappedMethod(rider, value);
