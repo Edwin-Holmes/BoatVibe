@@ -1,83 +1,51 @@
 class CBoatVibrationManager extends CObject {
-    private var waveSeqTimer : float;
-    private var waveStep     : int;
-    private var isWaving     : bool;
-    private var splashCooldown : float;
+    private var lastTilt : float;
+    private var lastPitch : float;
+    private var lastHeave : float;
 
-    public function Update(dt: float) {                                 //Called OnTick
-        if (splashCooldown > 0) {
-            splashCooldown -= dt;
-        }
+    public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
+        var currentTilt, currentPitch, currentHeave : float;
+        var deltaTilt, deltaPitch, deltaHeave : float;
+        var rumbleL, rumbleH : float;
         
-        if (isWaving) {
-            waveSeqTimer -= dt;                                         //Decrease timer       
-            if (waveSeqTimer <= 0) ProcessMovingSequence();               //If timer is 0, process next wave
+        // Multipliers to tune the "feel"
+        var sensitivity : float = 0.15; 
+
+        // 1. Extract World Z from the Vectors
+        currentTilt = lV.Z - rV.Z;
+        currentPitch = fV.Z - bV.Z;
+        currentHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
+
+        // 2. Calculate Rate of Change (Velocity of the rocking)
+        deltaTilt  = AbsF(currentTilt - lastTilt) / dt;
+        deltaPitch = AbsF(currentPitch - lastPitch) / dt;
+        deltaHeave = AbsF(currentHeave - lastHeave) / dt;
+
+        // 3. Map to Motors
+        // LFM = Vertical 'Weight' changes (Heave/Pitch)
+        // HFM = Angular 'Tension' changes (Tilt/Roll)
+        rumbleL = (deltaHeave * sensitivity) + (deltaPitch * (sensitivity * 0.5));
+        rumbleH = (deltaTilt * sensitivity);
+
+        // 4. Smooth out the noise
+        if (rumbleL < 0.005) rumbleL = 0;
+        if (rumbleH < 0.005) rumbleH = 0;
+
+        // Cap to avoid vibrating the controller off the table
+        rumbleL = MinF(rumbleL, 0.3);
+        rumbleH = MinF(rumbleH, 0.15);
+
+        if (rumbleL > 0 || rumbleH > 0) {
+            theGame.VibrateController(rumbleL, rumbleH, 0.1);
         }
-    }
 
-    public function TriggerMovingSequence() {
-        if (isWaving) return;
-        isWaving = true;
-        waveStep = 0;
-        ProcessMovingSequence();
-    }
-
-    private function ProcessMovingSequence() {                            //Called when wave is triggered
-        switch(waveStep) {
-            // Pair 1: Moderate Hit -> Longest Glide
-            case 0: theGame.VibrateController(0.05, 0.0, 0.12); 
-                    waveSeqTimer = 0.12; 
-                    waveStep = 1; 
-                    break;
-            case 1: theGame.VibrateController(0.0, 0.01, 1.0); 
-                    waveSeqTimer = 1.65; 
-                    waveStep = 2; 
-                    break; // Long glide + 0.6s silence
-
-            // Pair 2: Light Hit -> Medium Glide
-            case 2: theGame.VibrateController(0.04, 0.0, 0.10); 
-                    waveSeqTimer = 0.10; 
-                    waveStep = 3; 
-                    break;
-            case 3: theGame.VibrateController(0.0, 0.01, 0.80); 
-                    waveSeqTimer = 1.35; 
-                    waveStep = 4; 
-                    break; // Med glide + 0.6s silence
-
-            // Pair 3: Softest Hit -> Short Glide
-            case 4: theGame.VibrateController(0.02, 0.0, 0.08); 
-                    waveSeqTimer = 0.08; 
-                    waveStep = 5; 
-                    break;
-            case 5: theGame.VibrateController(0.0, 0.01, 0.50); 
-                    isWaving = false; 
-                    break;
-        }
-    }
-
-    public function Clear() {
-        isWaving = false;
-        waveStep = 0;
-        waveSeqTimer = 0;
-        theGame.VibrateController(0.0, 0.0, 0.0); 
-    }
-
-    public function TriggerIdleNudge() {
-        if (isWaving) return;
-        // Just the "Glide" portion for idle, very soft and long
-        theGame.VibrateController(0.0, 0.01, 0.05); 
+        lastTilt = currentTilt;
+        lastPitch = currentPitch;
+        lastHeave = currentHeave;
     }
 
     public function TriggerRudder() {
-        // A very brief, crisp mechanical tick
-        theGame.VibrateController(0.0, 0.1, 0.04);
-    }
-
-    public function TriggerWaveImpact() {
-        if (splashCooldown <= 0) {
-            theGame.VibrateControllerVeryHard(); 
-            splashCooldown = 2.0; // Set the 2-second buffer
-        }
+        theGame.VibrateController(0.0, 0.06, 0.04);
     }
 }
 
@@ -101,49 +69,20 @@ public var boatVibeManager : CBoatVibrationManager;
     return wrappedMethod(entity, vehicleSlot);
 }
 
-@addField(CBoatComponent) private var idleWaveTimer : float;
-@addField(CBoatComponent) private var moveWaveTimer : float;
-
 @wrapMethod(CBoatComponent) function OnTick(dt : float) {
-    var isMoving : bool;
-    wrappedMethod(dt);
+    var retVal: bool;
+    retVal = wrappedMethod(dt);
 
     if (boatVibeManager) {
-        isMoving = ( GetCurrentSpeed() > IDLE_SPEED_THRESHOLD );
-
-        if (isMoving) {
-            boatVibeManager.Update(dt);
-            moveWaveTimer -= dt;
-
-            // 1. Rhythmic Timing
-            if (moveWaveTimer <= 0) {
-                boatVibeManager.TriggerMovingSequence();
-                moveWaveTimer = 4.5;
-            }
-
-            // 2. Physical Impact Linked to Splash Effect
-            if ( boatEntity.IsEffectActive('front_splash') ) {
-                boatVibeManager.TriggerWaveImpact();
-            }
-        } else {
-/*             // 3. Idle Vibrations Linked to Idle Splash
-            if ( boatEntity.IsEffectActive('idle_splash') ) {
-                // Optional: Trigger a very soft nudge when the idle ripple plays
-                boatVibeManager.TriggerIdleNudge();
-            } */
-            // Kill vibrations immediately when button released
-            if (moveWaveTimer > 0) {
-                boatVibeManager.Clear();
-                moveWaveTimer = 0;
-            }
-
-            idleWaveTimer -= dt;
-            if (idleWaveTimer <= 0) {
-                boatVibeManager.TriggerIdleNudge();
-                idleWaveTimer = RandRangeF(3.5, 6.0); 
-            }
-        }
+        boatVibeManager.ProcessBuoyancy( dt, 
+            GetBuoyancyPointStatus_Left(),
+            GetBuoyancyPointStatus_Right(),
+            GetBuoyancyPointStatus_Front(),
+            GetBuoyancyPointStatus_Back()
+        );
     }
+
+    return retVal;
 }
 
 @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
