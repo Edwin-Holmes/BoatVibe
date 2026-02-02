@@ -5,68 +5,60 @@ class CBoatVibrationManager extends CObject {
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var curTilt, curPitch, curHeave : float;
-        var diffTilt, diffPitch, diffHeave : float;
         var dirTilt, dirPitch, dirHeave : float;
-        
-        // Strength variables
         var sTilt, sPitch, sHeave : float;
 
+        // 1. Countdown Logic (The "Gap" controller)
         if (vibeCooldown > 0) {
             vibeCooldown -= dt;
-            // We still update 'last' values so the math stays current when we wake up
             UpdateState(lV, rV, fV, bV);
             return; 
         }
 
-        // 1. Get current values
+        // 2. Get current values
         curTilt  = lV.Z - rV.Z;
         curPitch = fV.Z - bV.Z;
         curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        // 2. Calculate the "Magnitude" of the direction shift
-        // We only care if the direction flipped AND how far we've moved
+        // 3. Check for direction flips
         dirTilt  = GetSign(curTilt - lastTilt);
         dirPitch = GetSign(curPitch - lastPitch);
         dirHeave = GetSign(curHeave - lastHeave);
 
+        // 4. Calculate Strength (Lowered thresholds significantly)
+        // If direction flipped, we record the strength of the movement
         sTilt  = (dirTilt != lastTiltDir)  ? AbsF(curTilt)  : 0;
         sPitch = (dirPitch != lastPitchDir) ? AbsF(curPitch) : 0;
-        sHeave = (dirHeave != lastHeaveDir) ? AbsF(curHeave - lastHeave) * 50.0 : 0; // Heave needs a boost to compete
+        sHeave = (dirHeave != lastHeaveDir) ? AbsF(curHeave - lastHeave) * 100.0 : 0; 
 
-        // 3. Find the Winner (The Dominant Vector)
-        if (sHeave > sPitch && sHeave > sTilt && sHeave > 0.05) {
-            // HEAVE WIN: A heavy vertical thump
-            theGame.VibrateController(0.18, 0.0, 0.06);
-            vibeCooldown = 0.5; // Big gap
+        // 5. Trigger Winner (Boosted intensities to 0.2 - 0.4 range)
+        if (sHeave > 0.02) {
+            theGame.VibrateController(0.4, 0.0, 0.08); // Heavy Drop
+            vibeCooldown = 0.6; 
         } 
-        else if (sPitch > sTilt && sPitch > 0.18) {
-            // PITCH WIN: The nose dipping/rising
-            theGame.VibrateController(0.12, 0.0, 0.05);
-            vibeCooldown = 0.45;
+        else if (sPitch > 0.05) {
+            theGame.VibrateController(0.25, 0.0, 0.06); // Nose Pitch
+            vibeCooldown = 0.5;
         } 
-        else if (sTilt > 0.15) {
-            // TILT WIN: The side-to-side roll
-            theGame.VibrateController(0.0, 0.1, 0.05);
+        else if (sTilt > 0.05) {
+            theGame.VibrateController(0.0, 0.2, 0.06); // Side Roll
             vibeCooldown = 0.4;
         }
 
-        // 4. Update state
         UpdateState(lV, rV, fV, bV);
     }
 
     private function UpdateState(lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
-        var curTilt, curPitch, curHeave : float;
-        curTilt  = lV.Z - rV.Z;
-        curPitch = fV.Z - bV.Z;
-        curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
+        var curT, curP, curH : float;
+        curT = lV.Z - rV.Z;
+        curP = fV.Z - bV.Z;
+        curH = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        if (AbsF(curTilt - lastTilt) > 0.001) lastTiltDir = GetSign(curTilt - lastTilt);
-        if (AbsF(curPitch - lastPitch) > 0.001) lastPitchDir = GetSign(curPitch - lastPitch);
-        if (AbsF(curHeave - lastHeave) > 0.001) lastHeaveDir = GetSign(curHeave - lastHeave);
+        if (AbsF(curT - lastTilt) > 0.0001) lastTiltDir = GetSign(curT - lastTilt);
+        if (AbsF(curP - lastPitch) > 0.0001) lastPitchDir = GetSign(curP - lastPitch);
+        if (AbsF(curH - lastHeave) > 0.0001) lastHeaveDir = GetSign(curH - lastHeave);
 
-        lastTilt  = curTilt;
-        lastPitch = curPitch;
-        lastHeave = curHeave;
+        lastTilt = curT; lastPitch = curP; lastHeave = curH;
     }
 
     private function GetSign(val : float) : float {
@@ -112,10 +104,10 @@ public var boatVibeManager : CBoatVibrationManager;
     return retVal;
 }
 
-@wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
+/* @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
     // Check for change
     if (steerSound && boatVibeManager) {
         boatVibeManager.TriggerRudder();
     }
     wrappedMethod(rider, value);
-}
+} */
