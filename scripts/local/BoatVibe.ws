@@ -6,7 +6,7 @@ class CBoatVibrationManager extends CObject {
     public function Update(dt: float) {                                 //Called OnTick
         if (isWaving) {
             waveSeqTimer -= dt;                                         //Decrease timer       
-            if (waveSeqTimer <= 0) ProcessWaveSequence();               //If timer is 0, process next wave
+            if (waveSeqTimer <= 0) ProcessMovingSequence();               //If timer is 0, process next wave
         }
     }
 
@@ -17,7 +17,7 @@ class CBoatVibrationManager extends CObject {
         ProcessMovingSequence();
     }
 
-    private function ProcessWaveSequence() {                            //Called when wave is triggered
+    private function ProcessMovingSequence() {                            //Called when wave is triggered
         switch(waveStep) {
             // Pair 1: Moderate Hit -> Longest Glide
             case 0: theGame.VibrateController(0.05, 0.0, 0.12); 
@@ -115,12 +115,12 @@ public var boatVibeManager : CBoatVibrationManager;
             }
 
             // 2. Physical Impact Linked to Splash Effect
-            if ( this.IsEffectActive('front_splash') ) {
+            if ( boatEntity.IsEffectActive('front_splash') ) {
                 boatVibeManager.TriggerWaveImpact();
             }
         } else {
             // 3. Idle Vibrations Linked to Idle Splash
-            if ( this.IsEffectActive('idle_splash') ) {
+            if ( boatEntity.IsEffectActive('idle_splash') ) {
                 // Optional: Trigger a very soft nudge when the idle ripple plays
                 boatVibeManager.TriggerIdleNudge();
             }
