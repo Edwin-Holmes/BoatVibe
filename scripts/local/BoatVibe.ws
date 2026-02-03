@@ -2,8 +2,8 @@ class CBoatVibrationManager extends CObject {
     private var lastTilt, lastPitch, lastHeave : float;
     private var lastTiltDir, lastPitchDir, lastHeaveDir : float;
     private var vibeCooldown : float;
+    private var hasTriggeredThisFlip : bool; // The Latch
 
-    // Debug Trackers
     private var maxPitchSeen, minPitchSeen : float;
     private var messageTimer : float;
 
@@ -13,18 +13,9 @@ class CBoatVibrationManager extends CObject {
         var sTilt, sPitch, sHeave : float;
         var winnerStrength : float;
         var winnerType : int; 
-        var hasNewRecord : bool;
 
         if (messageTimer > 0) messageTimer -= dt;
 
-        // 1. Cooldown
-        if (vibeCooldown > 0) {
-            vibeCooldown -= dt;
-            UpdateState(lV, rV, fV, bV);
-            return; 
-        }
-
-        // 2. Capture Physics
         curTilt  = lV.Z - rV.Z;
         curPitch = fV.Z - bV.Z;
         curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
@@ -33,64 +24,53 @@ class CBoatVibrationManager extends CObject {
         dirPitch = GetSign(curPitch - lastPitch);
         dirHeave = GetSign(curHeave - lastHeave);
 
-        // 3. Debug Range Logic (Only for significant moves now)
-        hasNewRecord = false;
-        if (curPitch > maxPitchSeen) { maxPitchSeen = curPitch; hasNewRecord = true; }
-        if (curPitch < minPitchSeen) { minPitchSeen = curPitch; hasNewRecord = true; }
-
-        if (hasNewRecord && messageTimer <= 0) {
-            thePlayer.DisplayHudMessage("NEW PEAK: " + curPitch);
-            messageTimer = 0.2; 
+        // --- RESET THE LATCH ---
+        // If the boat returns close to level, allow a new trigger for the next wave
+        if (AbsF(curPitch) < 0.1) {
+            hasTriggeredThisFlip = false;
         }
 
-        // 4. Detect "Flip" Strength
         sTilt = 0;
-        if (dirTilt != lastTiltDir && lastTiltDir != 0) {
-            sTilt = AbsF(curTilt) * 5.0;
-        }
+        if (dirTilt != lastTiltDir && lastTiltDir != 0) { sTilt = AbsF(curTilt) * 5.0; }
 
         sHeave = 0;
-        if (dirHeave != lastHeaveDir && lastHeaveDir != 0) {
-            sHeave = 0.5; 
-        }
+        if (dirHeave != lastHeaveDir && lastHeaveDir != 0) { sHeave = 0.5; }
 
         sPitch = 0;
-        // HIGH-PASS FILTER: We only care about a direction flip if the boat 
-        // is pitched more than 0.2 (well above your 0.05 noise floor).
+        // --- TRIGGER WITH LATCH ---
+        // 1. Must be a direction flip
+        // 2. Must be outside the noise floor (0.2)
+        // 3. Must NOT have fired already for this specific crest/trough
         if (dirPitch != lastPitchDir && lastPitchDir != 0) {
-            if (AbsF(curPitch) > 0.2) { 
+            if (AbsF(curPitch) > 0.2 && !hasTriggeredThisFlip) { 
                 sPitch = AbsF(curPitch) * 5.0;
+                hasTriggeredThisFlip = true; // Lock it!
             }
         }
 
-        // 5. PICK THE WINNER
         winnerStrength = 0;
         winnerType = 0;
-
-        // Pitch is the only one allowed to win the race
         if (sPitch > winnerStrength) { 
             winnerStrength = sPitch; 
             winnerType = 2; 
         }
 
-        // 6. Execute 
-        if (winnerStrength > 0.01) {
+        if (winnerStrength > 0.01 && vibeCooldown <= 0) {
             winnerStrength = MaxF(winnerStrength, 0.4);
 
             if (messageTimer <= 0) {
-                thePlayer.DisplayHudMessage("VIBE TRIGGER: Pitch Flip at " + curPitch);
-                messageTimer = 0.2;
+                thePlayer.DisplayHudMessage("SINGLE VIBE: " + curPitch);
+                messageTimer = 1.0; // Block HUD spam for 1 full second
             }
 
             if (winnerType == 2) {
-                // Slightly longer duration (0.2) to feel more "weighty"
                 theGame.VibrateController(0.4, 0.1, 0.2);
             }
             
-            // Cooldown set to 0.8s to prevent double-thumping on the same wave crest
             vibeCooldown = 0.8; 
         }
 
+        if (vibeCooldown > 0) vibeCooldown -= dt;
         UpdateState(lV, rV, fV, bV);
     }
 
