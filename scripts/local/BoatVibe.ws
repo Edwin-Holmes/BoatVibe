@@ -15,7 +15,9 @@ class CBoatVibrationManager extends CObject {
         var winnerType : int; 
         var hasNewRecord : bool;
 
-        // 1. Cooldown & State Update
+        if (messageTimer > 0) messageTimer -= dt;
+
+        // 1. Cooldown
         if (vibeCooldown > 0) {
             vibeCooldown -= dt;
             UpdateState(lV, rV, fV, bV);
@@ -31,31 +33,20 @@ class CBoatVibrationManager extends CObject {
         dirPitch = GetSign(curPitch - lastPitch);
         dirHeave = GetSign(curHeave - lastHeave);
 
-        // 3. Debug Logic: Track Pitch Extremes
+        // 3. Debug Range Logic (Only for significant moves now)
         hasNewRecord = false;
         if (curPitch > maxPitchSeen) { maxPitchSeen = curPitch; hasNewRecord = true; }
         if (curPitch < minPitchSeen) { minPitchSeen = curPitch; hasNewRecord = true; }
 
-        if (messageTimer > 0) messageTimer -= dt;
-
         if (hasNewRecord && messageTimer <= 0) {
-            thePlayer.DisplayHudMessage("PITCH RANGE: [" + minPitchSeen + " to " + maxPitchSeen + "] | CUR: " + curPitch);
+            thePlayer.DisplayHudMessage("NEW PEAK: " + curPitch);
             messageTimer = 0.2; 
         }
 
-        // 4. Detect "Flip" Strength (Logic Intact)
+        // 4. Detect "Flip" Strength
         sTilt = 0;
         if (dirTilt != lastTiltDir && lastTiltDir != 0) {
             sTilt = AbsF(curTilt) * 5.0;
-        }
-
-        sPitch = 0;
-        // The Noise Gate: We only fire if the direction flipped AND 
-        // the current pitch is outside the "jitter zone" (roughly 0.05, adjust based on debug)
-        if (dirPitch != lastPitchDir && lastPitchDir != 0) {
-            if (AbsF(curPitch) > 0.05) { 
-                sPitch = AbsF(curPitch) * 5.0;
-            }
         }
 
         sHeave = 0;
@@ -63,25 +54,41 @@ class CBoatVibrationManager extends CObject {
             sHeave = 0.5; 
         }
 
-        // 5. PICK THE WINNER (Tilt and Heave excluded from race)
+        sPitch = 0;
+        // HIGH-PASS FILTER: We only care about a direction flip if the boat 
+        // is pitched more than 0.2 (well above your 0.05 noise floor).
+        if (dirPitch != lastPitchDir && lastPitchDir != 0) {
+            if (AbsF(curPitch) > 0.2) { 
+                sPitch = AbsF(curPitch) * 5.0;
+            }
+        }
+
+        // 5. PICK THE WINNER
         winnerStrength = 0;
         winnerType = 0;
 
-        // if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
-        if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
-        // if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
+        // Pitch is the only one allowed to win the race
+        if (sPitch > winnerStrength) { 
+            winnerStrength = sPitch; 
+            winnerType = 2; 
+        }
 
         // 6. Execute 
         if (winnerStrength > 0.01) {
             winnerStrength = MaxF(winnerStrength, 0.4);
 
-            thePlayer.DisplayHudMessage("VIBE TRIGGER: Pitch Flip at " + curPitch);
+            if (messageTimer <= 0) {
+                thePlayer.DisplayHudMessage("VIBE TRIGGER: Pitch Flip at " + curPitch);
+                messageTimer = 0.2;
+            }
 
             if (winnerType == 2) {
-                theGame.VibrateController(0.4, 0.1, 0.15);
+                // Slightly longer duration (0.2) to feel more "weighty"
+                theGame.VibrateController(0.4, 0.1, 0.2);
             }
             
-            vibeCooldown = 0.7; // Slow rhythm for slow boats
+            // Cooldown set to 0.8s to prevent double-thumping on the same wave crest
+            vibeCooldown = 0.8; 
         }
 
         UpdateState(lV, rV, fV, bV);
