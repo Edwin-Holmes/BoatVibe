@@ -57,15 +57,19 @@ class CBoatVibrationManager extends CObject {
             // DIAGNOSTIC: If the vibe is too weak to feel, force it to 0.3
             winnerStrength = MaxF(winnerStrength, 0.3);
 
+            // DEBUG: Show exactly what we are sending to the controller
+            thePlayer.DisplayHudMessage("SEND VIBE: " + winnerType + " Str: " + (string)winnerStrength);
+
+            // FORCE TEST: Use BOTH motors and LONGER duration for everything to rule out hardware/duration issues
             if (winnerType == 1) {
-                // Heave: Stronger pulse
-                theGame.VibrateController(MinF(winnerStrength * 1.2, 0.6), 0.0, 0.1); 
+                // Heave: Strong Rumble (Both Motors)
+                theGame.VibrateController(MinF(winnerStrength, 1.0), MinF(winnerStrength, 1.0), 0.3); 
             } else if (winnerType == 2) {
-                // Pitch: Medium pulse
-                theGame.VibrateController(MinF(winnerStrength, 0.5), 0.0, 0.08);
+                // Pitch: Medium Rumble
+                theGame.VibrateController(MinF(winnerStrength * 0.8, 1.0), MinF(winnerStrength * 0.8, 1.0), 0.25);
             } else if (winnerType == 3) {
-                // Tilt: High Frequency motor
-                theGame.VibrateController(0.0, MinF(winnerStrength, 0.4), 0.08);
+                // Tilt: Fast Rumble
+                theGame.VibrateController(MinF(winnerStrength * 0.5, 0.5), MinF(winnerStrength * 0.6, 1.0), 0.2);
             }
             
             // Set the gap - 0.6s provides a clear pulse/pause rhythm
