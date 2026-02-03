@@ -1,96 +1,80 @@
 class CBoatVibrationManager extends CObject {
-    private var lastTilt, lastPitch, lastHeave : float;
-    private var lastTiltDir, lastPitchDir, lastHeaveDir : float;
+    private var lastPitch : float;
+    private var lastPitchDir : float;
     private var vibeCooldown : float;
-    private var hasTriggeredThisFlip : bool; // The Latch
-
-    private var maxPitchSeen, minPitchSeen : float;
+    private var hasTriggeredThisFlip : bool; 
     private var messageTimer : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
-        var curTilt, curPitch, curHeave : float;
-        var dirTilt, dirPitch, dirHeave : float;
-        var sTilt, sPitch, sHeave : float;
-        var winnerStrength : float;
-        var winnerType : int; 
+        var curPitch : float;
+        var dirPitch : float;
+        var sPitch : float;
+        var vibeDuration : float;
 
         if (messageTimer > 0) messageTimer -= dt;
+        if (vibeCooldown > 0) vibeCooldown -= dt;
 
-        curTilt  = lV.Z - rV.Z;
+        // 1. Physics Capture (Pitch Only)
         curPitch = fV.Z - bV.Z;
-        curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
-
-        dirTilt  = GetSign(curTilt - lastTilt);
         dirPitch = GetSign(curPitch - lastPitch);
-        dirHeave = GetSign(curHeave - lastHeave);
 
-        // --- RESET THE LATCH ---
-        // If the boat returns close to level, allow a new trigger for the next wave
+        // 2. The Latch Reset
+        // Allow a new trigger once the boat settles toward the center
         if (AbsF(curPitch) < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        sTilt = 0;
-        if (dirTilt != lastTiltDir && lastTiltDir != 0) { sTilt = AbsF(curTilt) * 5.0; }
-
-        sHeave = 0;
-        if (dirHeave != lastHeaveDir && lastHeaveDir != 0) { sHeave = 0.5; }
-
+        // 3. The Trigger Logic
         sPitch = 0;
-        // --- TRIGGER WITH LATCH ---
-        // 1. Must be a direction flip
-        // 2. Must be outside the noise floor (0.2)
-        // 3. Must NOT have fired already for this specific crest/trough
         if (dirPitch != lastPitchDir && lastPitchDir != 0) {
+            // Noise floor 0.2, only fire once per wave crest/trough
             if (AbsF(curPitch) > 0.2 && !hasTriggeredThisFlip) { 
-                sPitch = AbsF(curPitch) * 5.0;
-                hasTriggeredThisFlip = true; // Lock it!
+                sPitch = AbsF(curPitch); 
+                hasTriggeredThisFlip = true;
             }
         }
 
-        winnerStrength = 0;
-        winnerType = 0;
-        if (sPitch > winnerStrength) { 
-            winnerStrength = sPitch; 
-            winnerType = 2; 
-        }
-
-        if (winnerStrength > 0.01 && vibeCooldown <= 0) {
-            winnerStrength = MaxF(winnerStrength, 0.4);
+        // 4. Execution
+        if (sPitch > 0 && vibeCooldown <= 0) {
+            // --- DYNAMIC DURATION CALCULATION ---
+            // We map pitch (0.2 to 0.5) to duration (0.1 to 0.4)
+            // A simple linear scale: (Pitch - 0.2) + 0.1
+            vibeDuration = (sPitch - 0.2) + 0.1;
+            vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
 
             if (messageTimer <= 0) {
-                thePlayer.DisplayHudMessage("SINGLE VIBE: " + curPitch);
-                messageTimer = 1.0; // Block HUD spam for 1 full second
+                thePlayer.DisplayHudMessage("WAVE THUMP: Str " + sPitch + " Dur " + vibeDuration);
+                messageTimer = 1.0;
             }
 
-            if (winnerType == 2) {
-                theGame.VibrateController(0.4, 0.1, 0.2);
-            }
+            // Vibe Strength halved as requested (0.2 Large motor, 0.05 Small motor)
+            theGame.VibrateController(0.2, 0.05, vibeDuration);
             
             vibeCooldown = 0.8; 
         }
 
-        if (vibeCooldown > 0) vibeCooldown -= dt;
-        UpdateState(lV, rV, fV, bV);
+        UpdateState(curPitch, dirPitch);
     }
 
-    private function UpdateState(lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
-        var curT, curP, curH : float;
-        curT = lV.Z - rV.Z;
-        curP = fV.Z - bV.Z;
-        curH = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
-
-        if (AbsF(curT - lastTilt) > 0.0001) lastTiltDir = GetSign(curT - lastTilt);
-        if (AbsF(curP - lastPitch) > 0.0001) lastPitchDir = GetSign(curP - lastPitch);
-        if (AbsF(curH - lastHeave) > 0.0001) lastHeaveDir = GetSign(curH - lastHeave);
-
-        lastTilt = curT; lastPitch = curP; lastHeave = curH;
+    private function UpdateState(curP : float, dirP : float) {
+        lastPitch = curP;
+        // Direction is updated only if movement is significant to avoid jitter
+        if (AbsF(curP - lastPitch) > 0.0001) {
+            lastPitchDir = dirP;
+        }
     }
 
     private function GetSign(val : float) : float {
         if (val > 0.0001) return 1.0;
         if (val < -0.0001) return -1.0;
         return 0;
+    }
+
+    // Helper to keep duration in bounds
+    private function ClampF(val : float, min : float, max : float) : float {
+        if (val < min) return min;
+        if (val > max) return max;
+        return val;
     }
 }
 
