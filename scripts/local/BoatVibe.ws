@@ -1,42 +1,47 @@
 class CBoatVibrationManager extends CObject {
-    private var lastPitch : float;
-    private var lastPitchDir : float;
+    private var lastPitch, lastTilt : float;
+    private var lastPitchDir, lastTiltDir : float;
     private var vibeCooldown : float;
     private var hasTriggeredThisFlip : bool; 
-    private var messageTimer : float;
-
-    // Echo Variables
     private var echoTimer : float;
     private var echoDuration : float;
 
+    // The "Anti-Double-Thud" Timer
+    private var pitchDominanceTimer : float;
+
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
-        var curPitch, absPitch, diff, dirPitch : float;
+        var curPitch, absPitch, diffP, dirPitch : float;
+        var curTilt, absTilt, diffT, dirTilt : float;
         var vibeDuration : float;
 
-        if (messageTimer > 0) messageTimer -= dt;
         if (vibeCooldown > 0) vibeCooldown -= dt;
+        if (pitchDominanceTimer > 0) pitchDominanceTimer -= dt;
 
+        // 1. Capture Physics
         curPitch = fV.Z - bV.Z;
         absPitch = AbsF(curPitch);
-        diff = curPitch - lastPitch;
-        dirPitch = GetSign(diff);
+        diffP = curPitch - lastPitch;
+        dirPitch = GetSign(diffP);
 
-        //Reset Latch
-        if (absPitch < 0.1) {
+        curTilt = lV.Z - rV.Z;
+        absTilt = AbsF(curTilt);
+        diffT = curTilt - lastTilt;
+        dirTilt = GetSign(diffT);
+
+        // 2. Reset Latch
+        if (absPitch < 0.1 && absTilt < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        //Main Trigger Logic
+        // 3. PITCH TRIGGER (The Boss)
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
             if (absPitch > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
                 
                 vibeDuration = (absPitch - 0.2) + 0.1;
                 vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
 
-                //Execute Primary Vibe
                 theGame.VibrateController(0.2, 0.0, vibeDuration);
                 
-                //Queue the Echo if it was a big wave
                 if (vibeDuration >= 0.25) {
                     echoTimer = vibeDuration + 1.0; 
                     echoDuration = vibeDuration * 0.75;
@@ -44,10 +49,28 @@ class CBoatVibrationManager extends CObject {
 
                 hasTriggeredThisFlip = true;
                 vibeCooldown = 0.5; 
+                
+                // Block Roll for the next half second
+                pitchDominanceTimer = 0.5; 
             }
         }
 
-        //Handle Echo Queue
+        // 4. ROLL TRIGGER (The Assistant)
+        // Only fires if we aren't currently "Pitch Dominant"
+        if (pitchDominanceTimer <= 0 && dirTilt != lastTiltDir && dirTilt != 0 && lastTiltDir != 0) {
+            if (absTilt > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
+                
+                vibeDuration = (absTilt - 0.2) + 0.1;
+                vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
+
+                theGame.VibrateController(0.2, 0.0, vibeDuration);
+                
+                hasTriggeredThisFlip = true;
+                vibeCooldown = 0.5; 
+            }
+        }
+
+        // 5. Handle Echo Queue
         if (echoTimer > 0) {
             echoTimer -= dt;
             if (echoTimer <= 0) {
@@ -55,11 +78,12 @@ class CBoatVibrationManager extends CObject {
             }
         }
 
-        //Update State
-        if (AbsF(diff) > 0.0001) {
-            lastPitchDir = dirPitch;
-        }
+        // 6. Update States
+        if (AbsF(diffP) > 0.0001) lastPitchDir = dirPitch;
         lastPitch = curPitch;
+
+        if (AbsF(diffT) > 0.0001) lastTiltDir = dirTilt;
+        lastTilt = curTilt;
     }
 
     private function GetSign(val : float) : float {
@@ -110,11 +134,3 @@ public var boatVibeManager : CBoatVibrationManager;
 
     return retVal;
 }
-
-/* @wrapMethod(CBoatComponent) function SetRudderDir( rider : CActor, value : float ) {
-    // Check for change
-    if (steerSound && boatVibeManager) {
-        boatVibeManager.TriggerRudder();
-    }
-    wrappedMethod(rider, value);
-} */
