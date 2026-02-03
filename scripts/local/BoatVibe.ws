@@ -21,51 +21,41 @@ class CBoatVibrationManager extends CObject {
         diff = curPitch - lastPitch;
         dirPitch = GetSign(diff);
 
-        // 1. Reset Latch
+        //Reset Latch
         if (absPitch < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        // 2. Main Trigger Logic
+        //Main Trigger Logic
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
             if (absPitch > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
                 
                 vibeDuration = (absPitch - 0.2) + 0.1;
-                vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
+                vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
 
-                // Execute Primary Vibe
-                theGame.VibrateController(0.2, 0.05, vibeDuration);
+                //Execute Primary Vibe
+                theGame.VibrateController(0.2, 0.0, vibeDuration);
                 
-                // 3. Queue the Echo if it was a big wave
+                //Queue the Echo if it was a big wave
                 if (vibeDuration >= 0.25) {
-                    // Start echo after: Primary Duration + 0.1s gap
-                    echoTimer = vibeDuration + 0.1; 
-                    echoDuration = vibeDuration * 2.0;
+                    echoTimer = vibeDuration + 1.0; 
+                    echoDuration = vibeDuration * 0.75;
                 }
 
                 hasTriggeredThisFlip = true;
                 vibeCooldown = 0.5; 
-
-                if (messageTimer <= 0) {
-                    thePlayer.DisplayHudMessage("THUMP! Dur: " + vibeDuration + (echoTimer > 0 ? " (Echo Queued)" : ""));
-                    messageTimer = 0.5;
-                }
             }
         }
 
-        // 4. Handle Echo Queue
+        //Handle Echo Queue
         if (echoTimer > 0) {
             echoTimer -= dt;
             if (echoTimer <= 0) {
-                // Secondary echo vibe: subtle but long
                 theGame.VibrateController(0.0, 0.02, echoDuration);
-                if (messageTimer <= 0) {
-                    thePlayer.DisplayHudMessage("...echo settlement...");
-                }
             }
         }
 
-        // 5. Update State
+        //Update State
         if (AbsF(diff) > 0.0001) {
             lastPitchDir = dirPitch;
         }
