@@ -6,62 +6,58 @@ class CBoatVibrationManager extends CObject {
     private var messageTimer : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
-        var curPitch : float;
-        var dirPitch : float;
-        var sPitch : float;
+        var curPitch, absPitch, diff, dirPitch : float;
         var vibeDuration : float;
-        var absPitch : float;
 
+        // 1. Timers
         if (messageTimer > 0) messageTimer -= dt;
         if (vibeCooldown > 0) vibeCooldown -= dt;
 
+        // 2. Physics
         curPitch = fV.Z - bV.Z;
-        absPitch = AbsF(curPitch); // We use this for all checks
-        dirPitch = GetSign(curPitch - lastPitch);
+        absPitch = AbsF(curPitch);
+        diff = curPitch - lastPitch;
+        dirPitch = GetSign(diff);
 
-        // 1. Reset the Latch when the boat is relatively level
+        // 3. Reset Latch when boat is level
         if (absPitch < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        // 2. Trigger Logic
-        sPitch = 0;
-        if (dirPitch != lastPitchDir && lastPitchDir != 0) {
-            // Check against the absolute pitch so -0.4 is treated like 0.4
-            if (absPitch > 0.2 && !hasTriggeredThisFlip) { 
-                sPitch = absPitch; 
+        // 4. Trigger Logic
+        // We only proceed if the direction changed and it's not a tiny jitter
+        if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
+            
+            if (absPitch > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
+                
+                // Calculate and Clamp Duration
+                vibeDuration = (absPitch - 0.2) + 0.1;
+                vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
+
+                // Execute Vibration
+                theGame.VibrateController(0.2, 0.05, vibeDuration);
+                
+                // Set Guards
                 hasTriggeredThisFlip = true;
+                vibeCooldown = 0.5; // Short cooldown so we can catch the next peak/trough
+
+                if (messageTimer <= 0) {
+                    thePlayer.DisplayHudMessage("THUMP: " + curPitch + " | Dur: " + vibeDuration);
+                    messageTimer = 0.5;
+                }
             }
         }
 
-        // 3. Execution
-        if (sPitch > 0 && vibeCooldown <= 0) {
-            // Mapping 0.2 -> 0.5 pitch to 0.1 -> 0.4 duration
-            vibeDuration = (sPitch - 0.2) + 0.1;
-            vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
-
-            if (messageTimer <= 0) {
-                thePlayer.DisplayHudMessage("WAVE THUMP: Str " + sPitch + " Dur " + vibeDuration);
-                messageTimer = 1.0;
-            }
-
-            theGame.VibrateController(0.2, 0.05, vibeDuration);
-            vibeCooldown = 0.6; // Slightly shorter cooldown to allow crest AND trough hits
+        // 5. Update State (Do this LAST)
+        if (AbsF(diff) > 0.0001) {
+            lastPitchDir = dirPitch;
         }
-
-        UpdateState(curPitch, dirPitch);
-    }
-
-    private function UpdateState(curP : float, dirP : float) {
-        lastPitch = curP;
-        if (AbsF(curP - lastPitch) > 0.0001) {
-            lastPitchDir = dirP;
-        }
+        lastPitch = curPitch;
     }
 
     private function GetSign(val : float) : float {
-        if (val > 0.0001) return 1.0;
-        if (val < -0.0001) return -1.0;
+        if (val > 0.001) return 1.0;
+        if (val < -0.001) return -1.0;
         return 0;
     }
 
