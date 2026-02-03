@@ -1,25 +1,30 @@
 class CBoatVibrationManager extends CObject {
+    // State Tracking
     private var lastPitch, lastTilt : float;
     private var lastPitchDir, lastTiltDir : float;
+    
+    // Timers & Latches
     private var vibeCooldown : float;
+    private var pitchDominanceTimer : float;
     private var hasTriggeredPitchFlip : bool; 
     private var hasTriggeredRollFlip : bool; 
-    private var echoTimer, echoDuration, pitchDominanceTimer : float;
-
-    // Diagnostic Variables
-    private var diagTimer : float;
-    private var minTiltObserved, maxTiltObserved, maxDeltaObserved : float;
+    
+    // Secondary Effects
+    private var echoTimer : float;
+    private var echoDuration : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var curPitch, absPitch, diffP, dirPitch : float;
         var curTilt, absTilt, diffT, dirTilt : float;
         var vibeDuration : float;
-        var triggeredPitchThisFrame : bool;
+        var pitchJustTriggered : bool;
 
+        // Update Timers
         if (vibeCooldown > 0) vibeCooldown -= dt;
         if (pitchDominanceTimer > 0) pitchDominanceTimer -= dt;
-        
-        // 1. Capture Physics
+        if (echoTimer > 0) echoTimer -= dt;
+
+        // 1. CAPTURE PHYSICS
         curPitch = fV.Z - bV.Z;
         absPitch = AbsF(curPitch);
         diffP = curPitch - lastPitch;
@@ -30,78 +35,80 @@ class CBoatVibrationManager extends CObject {
         diffT = curTilt - lastTilt;
         dirTilt = GetSign(diffT);
 
-        // --- Diagnostic Tracking ---
-        diagTimer += dt;
-        if (curTilt < minTiltObserved) minTiltObserved = curTilt;
-        if (curTilt > maxTiltObserved) maxTiltObserved = curTilt;
-        if (AbsF(diffT) > maxDeltaObserved) maxDeltaObserved = AbsF(diffT);
-
-        if (diagTimer >= 20.0) {
-            thePlayer.DisplayHudMessage("ROLL LOG | Range: [" + minTiltObserved + " to " + maxTiltObserved + "] | Max Delta: " + maxDeltaObserved);
-            diagTimer = 0; minTiltObserved = 0; maxTiltObserved = 0; maxDeltaObserved = 0;
+        // 2. LATCH RESETS
+        // Pitch resets when the boat levels out front-to-back
+        if (absPitch < 0.1) {
+            hasTriggeredPitchFlip = false;
         }
 
-        // 2. Pitch Latch Reset (Keep this stable)
-        if (absPitch < 0.1) hasTriggeredPitchFlip = false;
-
-        // 3. PITCH TRIGGER (Priority)
-        triggeredPitchThisFrame = false;
+        // 3. PITCH TRIGGER (The Main Event)
+        pitchJustTriggered = false;
+        
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
+            // Threshold 0.2: Significant wave/movement required
             if (absPitch > 0.2 && !hasTriggeredPitchFlip && vibeCooldown <= 0) {
+                
                 vibeDuration = ClampF((absPitch - 0.2) + 0.1, 0.1, 0.6);
                 theGame.VibrateController(0.2, 0.0, vibeDuration);
                 
+                // Set up the motor 'echo' for heavy hits
                 if (vibeDuration >= 0.25) {
                     echoTimer = vibeDuration + 1.0; 
                     echoDuration = vibeDuration * 0.75;
                 }
+
                 hasTriggeredPitchFlip = true;
-                vibeCooldown = 0.4; 
-                pitchDominanceTimer = 0.4; 
-                triggeredPitchThisFrame = true;
+                vibeCooldown = 0.5; 
+                pitchDominanceTimer = 1.0; // Silence Roll for 1 second
+                pitchJustTriggered = true;
             }
         }
 
-        // 4. ROLL TRIGGER (Direction-Based Latch)
-        if (!triggeredPitchThisFrame && pitchDominanceTimer <= 0) {
-            // If direction changed, we reset the roll latch immediately
-            if (dirTilt != lastTiltDir) {
-                hasTriggeredRollFlip = false; 
+        // 4. ROLL TRIGGER (The Apex Detail)
+        // Only executes if Pitch hasn't fired recently
+        if (!pitchJustTriggered && pitchDominanceTimer <= 0) {
+            
+            // RESET: Allow a new vibe if we start moving back INWARD (toward center)
+            // Even if we don't hit 0, moving inward resets the "Apex" requirement.
+            if ((curTilt > 0 && dirTilt < 0) || (curTilt < 0 && dirTilt > 0)) {
+                hasTriggeredRollFlip = false;
             }
 
-            if (dirTilt != 0 && lastTiltDir != 0) {
-                // Using 0.05 threshold to catch those 0.4 peaks easily
-                if (absTilt > 0.05 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
+            // TRIGGER: Direction changed at the peak of a roll
+            if (dirTilt != lastTiltDir && lastTiltDir != 0) {
+                
+                // Threshold 0.15: Catching the -0.18 style peaks you observed
+                if (absTilt > 0.15 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
                     
-                    // Scale: 0.1 tilt -> 0.2 vibe duration. 0.4 tilt -> 0.5 vibe duration.
-                    vibeDuration = (absTilt - 0.05) + 0.15; 
-                    vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
-                    thePlayer.DisplayHudMessage("roll vibe");
-                    theGame.VibrateController(0.2, 0.0, vibeDuration);
+                    vibeDuration = (absTilt - 0.1) + 0.1;
+                    vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
+
+                    // Slightly softer intensity for Roll
+                    theGame.VibrateController(0.15, 0.0, vibeDuration);
                     
-                    hasTriggeredRollFlip = true; // Lock until next direction change
-                    vibeCooldown = 0.25; // Snappy cooldown for rhythmic rocking
+                    hasTriggeredRollFlip = true; 
+                    vibeCooldown = 0.4; 
                 }
             }
         }
 
-        // 5. Echo & State Updates
-        if (echoTimer > 0) {
-            echoTimer -= dt;
-            if (echoTimer <= 0) theGame.VibrateController(0.0, 0.02, echoDuration);
+        // 5. HANDLE ECHO
+        if (echoTimer <= 0 && echoDuration > 0) {
+            theGame.VibrateController(0.0, 0.02, echoDuration);
+            echoDuration = 0; // Reset after firing
         }
 
-        if (AbsF(diffP) > 0.0001) lastPitchDir = dirPitch;
+        // 6. UPDATE HISTORY
+        if (AbsF(diffP) > 0.001) lastPitchDir = dirPitch;
         lastPitch = curPitch;
         
-        if (AbsF(diffT) > 0.0001) lastTiltDir = dirTilt;
+        if (AbsF(diffT) > 0.001) lastTiltDir = dirTilt;
         lastTilt = curTilt;
     }
 
     private function GetSign(val : float) : float {
-        // Tuned to your 0.005 - 0.01 delta data
-        if (val > 0.001) return 1.0;
-        if (val < -0.001) return -1.0;
+        if (val > 0.002) return 1.0;
+        if (val < -0.002) return -1.0;
         return 0;
     }
 
