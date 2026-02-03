@@ -2,14 +2,13 @@ class CBoatVibrationManager extends CObject {
     private var lastPitch, lastTilt : float;
     private var lastPitchDir, lastTiltDir : float;
     private var vibeCooldown : float;
-    private var hasTriggeredPitchFlip, hasTriggeredRollFlip : bool; 
+    private var hasTriggeredPitchFlip : bool; 
+    private var hasTriggeredRollFlip : bool; 
     private var echoTimer, echoDuration, pitchDominanceTimer : float;
 
     // Diagnostic Variables
     private var diagTimer : float;
-    private var minTiltObserved : float; // Deepest Left
-    private var maxTiltObserved : float; // Deepest Right
-    private var maxDeltaObserved : float;
+    private var minTiltObserved, maxTiltObserved, maxDeltaObserved : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var curPitch, absPitch, diffP, dirPitch : float;
@@ -37,20 +36,15 @@ class CBoatVibrationManager extends CObject {
         if (curTilt > maxTiltObserved) maxTiltObserved = curTilt;
         if (AbsF(diffT) > maxDeltaObserved) maxDeltaObserved = AbsF(diffT);
 
-        if (diagTimer >= 5.0) {
-            theGame.DisplayHudMessage("ROLL LOG | Range: [" + minTiltObserved + " to " + maxTiltObserved + "] | Max Delta: " + maxDeltaObserved);
-            diagTimer = 0;
-            minTiltObserved = 0;
-            maxTiltObserved = 0;
-            maxDeltaObserved = 0;
+        if (diagTimer >= 20.0) {
+            thePlayer.DisplayHudMessage("ROLL LOG | Range: [" + minTiltObserved + " to " + maxTiltObserved + "] | Max Delta: " + maxDeltaObserved);
+            diagTimer = 0; minTiltObserved = 0; maxTiltObserved = 0; maxDeltaObserved = 0;
         }
-        // ---------------------------
 
-        // 2. Latch Resets
-        if (absPitch < 0.05) hasTriggeredPitchFlip = false;
-        if (absTilt < 0.05)  hasTriggeredRollFlip = false;
+        // 2. Pitch Latch Reset (Keep this stable)
+        if (absPitch < 0.1) hasTriggeredPitchFlip = false;
 
-        // 3. PITCH TRIGGER
+        // 3. PITCH TRIGGER (Priority)
         triggeredPitchThisFrame = false;
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
             if (absPitch > 0.2 && !hasTriggeredPitchFlip && vibeCooldown <= 0) {
@@ -68,16 +62,25 @@ class CBoatVibrationManager extends CObject {
             }
         }
 
-        // 4. ROLL TRIGGER
+        // 4. ROLL TRIGGER (Direction-Based Latch)
         if (!triggeredPitchThisFrame && pitchDominanceTimer <= 0) {
-            if (dirTilt != lastTiltDir && dirTilt != 0) {
-                if (absTilt > 0.01 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
-                    vibeDuration = (absTilt * 2.0) + 0.1; 
-                    vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
+            // If direction changed, we reset the roll latch immediately
+            if (dirTilt != lastTiltDir) {
+                hasTriggeredRollFlip = false; 
+            }
+
+            if (dirTilt != 0 && lastTiltDir != 0) {
+                // Using 0.05 threshold to catch those 0.4 peaks easily
+                if (absTilt > 0.05 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
+                    
+                    // Scale: 0.1 tilt -> 0.2 vibe duration. 0.4 tilt -> 0.5 vibe duration.
+                    vibeDuration = (absTilt - 0.05) + 0.15; 
+                    vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
+                    thePlayer.DisplayHudMessage("roll vibe");
                     theGame.VibrateController(0.2, 0.0, vibeDuration);
                     
-                    hasTriggeredRollFlip = true;
-                    vibeCooldown = 0.3; 
+                    hasTriggeredRollFlip = true; // Lock until next direction change
+                    vibeCooldown = 0.25; // Snappy cooldown for rhythmic rocking
                 }
             }
         }
@@ -90,13 +93,15 @@ class CBoatVibrationManager extends CObject {
 
         if (AbsF(diffP) > 0.0001) lastPitchDir = dirPitch;
         lastPitch = curPitch;
+        
         if (AbsF(diffT) > 0.0001) lastTiltDir = dirTilt;
         lastTilt = curTilt;
     }
 
     private function GetSign(val : float) : float {
-        if (val > 0.0001) return 1.0;
-        if (val < -0.0001) return -1.0;
+        // Tuned to your 0.005 - 0.01 delta data
+        if (val > 0.001) return 1.0;
+        if (val < -0.001) return -1.0;
         return 0;
     }
 
