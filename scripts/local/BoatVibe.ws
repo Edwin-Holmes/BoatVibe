@@ -7,42 +7,59 @@ class CBoatVibrationManager extends CObject {
         var curTilt, curPitch, curHeave : float;
         var dirTilt, dirPitch, dirHeave : float;
         var sTilt, sPitch, sHeave : float;
+        var winnerStrength : float;
+        var winnerType : int; // 1 = Heave, 2 = Pitch, 3 = Tilt
 
-        // 1. Countdown Logic (The "Gap" controller)
+        // 1. Countdown Gap logic
         if (vibeCooldown > 0) {
             vibeCooldown -= dt;
             UpdateState(lV, rV, fV, bV);
             return; 
         }
 
-        // 2. Get current values
+        // 2. Capture Physics
         curTilt  = lV.Z - rV.Z;
         curPitch = fV.Z - bV.Z;
         curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        // 3. Check for direction flips
         dirTilt  = GetSign(curTilt - lastTilt);
         dirPitch = GetSign(curPitch - lastPitch);
         dirHeave = GetSign(curHeave - lastHeave);
 
-        // 4. Calculate Strength (Lowered thresholds significantly)
-        // If direction flipped, we record the strength of the movement
-        sTilt  = (dirTilt != lastTiltDir)  ? AbsF(curTilt)  : 0;
-        sPitch = (dirPitch != lastPitchDir) ? AbsF(curPitch) : 0;
-        sHeave = (dirHeave != lastHeaveDir) ? AbsF(curHeave - lastHeave) * 100.0 : 0; 
+        // 3. Detect "Flip" Strength
+        // Increased multipliers to ensure the math produces visible numbers
+        sTilt  = (dirTilt != lastTiltDir)  ? AbsF(curTilt) * 2.0 : 0;
+        sPitch = (dirPitch != lastPitchDir) ? AbsF(curPitch) * 2.0 : 0;
+        sHeave = (dirHeave != lastHeaveDir) ? AbsF(curHeave - lastHeave) * 150.0 : 0; 
 
-        // 5. Trigger Winner (Boosted intensities to 0.2 - 0.4 range)
-        if (sHeave > 0.02) {
-            theGame.VibrateController(0.4, 0.0, 0.08); // Heavy Drop
+        // 4. PICK THE BIGGEST (The Winner)
+        winnerStrength = 0;
+        winnerType = 0;
+
+        if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
+        if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
+        if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
+
+        // 5. Execute with Diagnostic Floor
+        // If we detect any movement above a tiny threshold...
+        if (winnerStrength > 0.01) {
+            
+            // DIAGNOSTIC: If the vibe is too weak to feel, force it to 0.3
+            winnerStrength = MaxF(winnerStrength, 0.3);
+
+            if (winnerType == 1) {
+                // Heave: Stronger pulse
+                theGame.VibrateController(MinF(winnerStrength * 1.2, 0.6), 0.0, 0.1); 
+            } else if (winnerType == 2) {
+                // Pitch: Medium pulse
+                theGame.VibrateController(MinF(winnerStrength, 0.5), 0.0, 0.08);
+            } else if (winnerType == 3) {
+                // Tilt: High Frequency motor
+                theGame.VibrateController(0.0, MinF(winnerStrength, 0.4), 0.08);
+            }
+            
+            // Set the gap - 0.6s provides a clear pulse/pause rhythm
             vibeCooldown = 0.6; 
-        } 
-        else if (sPitch > 0.05) {
-            theGame.VibrateController(0.25, 0.0, 0.06); // Nose Pitch
-            vibeCooldown = 0.5;
-        } 
-        else if (sTilt > 0.05) {
-            theGame.VibrateController(0.0, 0.2, 0.06); // Side Roll
-            vibeCooldown = 0.4;
         }
 
         UpdateState(lV, rV, fV, bV);
