@@ -5,50 +5,67 @@ class CBoatVibrationManager extends CObject {
     private var hasTriggeredThisFlip : bool; 
     private var messageTimer : float;
 
+    // Echo Variables
+    private var echoTimer : float;
+    private var echoDuration : float;
+
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var curPitch, absPitch, diff, dirPitch : float;
         var vibeDuration : float;
 
-        // 1. Timers
         if (messageTimer > 0) messageTimer -= dt;
         if (vibeCooldown > 0) vibeCooldown -= dt;
 
-        // 2. Physics
         curPitch = fV.Z - bV.Z;
         absPitch = AbsF(curPitch);
         diff = curPitch - lastPitch;
         dirPitch = GetSign(diff);
 
-        // 3. Reset Latch when boat is level
+        // 1. Reset Latch
         if (absPitch < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        // 4. Trigger Logic
-        // We only proceed if the direction changed and it's not a tiny jitter
+        // 2. Main Trigger Logic
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
-            
             if (absPitch > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
                 
-                // Calculate and Clamp Duration
                 vibeDuration = (absPitch - 0.2) + 0.1;
                 vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
 
-                // Execute Vibration
+                // Execute Primary Vibe
                 theGame.VibrateController(0.2, 0.05, vibeDuration);
                 
-                // Set Guards
+                // 3. Queue the Echo if it was a big wave
+                if (vibeDuration >= 0.25) {
+                    // Start echo after: Primary Duration + 0.1s gap
+                    echoTimer = vibeDuration + 0.1; 
+                    echoDuration = vibeDuration * 2.0;
+                }
+
                 hasTriggeredThisFlip = true;
-                vibeCooldown = 0.5; // Short cooldown so we can catch the next peak/trough
+                vibeCooldown = 0.5; 
 
                 if (messageTimer <= 0) {
-                    thePlayer.DisplayHudMessage("THUMP: " + curPitch + " | Dur: " + vibeDuration);
+                    thePlayer.DisplayHudMessage("THUMP! Dur: " + vibeDuration + (echoTimer > 0 ? " (Echo Queued)" : ""));
                     messageTimer = 0.5;
                 }
             }
         }
 
-        // 5. Update State (Do this LAST)
+        // 4. Handle Echo Queue
+        if (echoTimer > 0) {
+            echoTimer -= dt;
+            if (echoTimer <= 0) {
+                // Secondary echo vibe: subtle but long
+                theGame.VibrateController(0.0, 0.02, echoDuration);
+                if (messageTimer <= 0) {
+                    thePlayer.DisplayHudMessage("...echo settlement...");
+                }
+            }
+        }
+
+        // 5. Update State
         if (AbsF(diff) > 0.0001) {
             lastPitchDir = dirPitch;
         }
