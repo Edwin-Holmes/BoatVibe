@@ -48,7 +48,7 @@ class CBoatVibrationManager extends CObject {
         }
 
         // DEBUG: Explicit print of the comparison
-        thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + " vs " + (string)lastTiltDir + " => " + (string)sTilt);
+        //thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + " vs " + (string)lastTiltDir + " => " + (string)sTilt);
 
         // 5. Execute with Diagnostic Floor
         // If we detect any movement above a tiny threshold...
@@ -63,13 +63,16 @@ class CBoatVibrationManager extends CObject {
             // FORCE TEST: Use BOTH motors and LONGER duration for everything to rule out hardware/duration issues
             if (winnerType == 1) {
                 // Heave: Strong Rumble (Both Motors)
-                theGame.VibrateController(MinF(winnerStrength, 1.0), MinF(winnerStrength, 1.0), 0.3); 
+                theGame.VibrateControllerVeryHard();
+                //theGame.VibrateController(MinF(winnerStrength, 1.0), MinF(winnerStrength, 1.0), 0.3); 
             } else if (winnerType == 2) {
                 // Pitch: Medium Rumble
-                theGame.VibrateController(MinF(winnerStrength * 0.8, 1.0), MinF(winnerStrength * 0.8, 1.0), 0.25);
+                theGame.VibrateControllerVeryHard();
+                //theGame.VibrateController(MinF(winnerStrength * 0.8, 1.0), MinF(winnerStrength * 0.8, 1.0), 0.25);
             } else if (winnerType == 3) {
                 // Tilt: Fast Rumble
-                theGame.VibrateController(MinF(winnerStrength * 0.5, 0.5), MinF(winnerStrength * 0.6, 1.0), 0.2);
+                theGame.VibrateControllerVeryHard();
+                //theGame.VibrateController(MinF(winnerStrength * 0.5, 0.5), MinF(winnerStrength * 0.6, 1.0), 0.2);
             }
             
             // Set the gap - 0.6s provides a clear pulse/pause rhythm
