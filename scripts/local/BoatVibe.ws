@@ -31,7 +31,8 @@ class CBoatVibrationManager extends CObject {
         }
 
         sPitch = 0;
-        if (dirPitch != lastPitchDir && lastPitchDir != 0) {
+        // FIX: Added noise gate (> 0.02) to ensure the flip is significant
+        if (dirPitch != lastPitchDir && lastPitchDir != 0 && AbsF(curPitch - lastPitch) > 0.02) {
             sPitch = AbsF(curPitch) * 5.0;
         }
 
@@ -40,19 +41,18 @@ class CBoatVibrationManager extends CObject {
             sHeave = 0.5; 
         }
 
-        // --- THE MISSING LINK: PICK THE WINNER ---
+        // --- PICK THE WINNER (Heave and Tilt temporarily ignored) ---
         winnerStrength = 0;
         winnerType = 0;
 
-        if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
+        // if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
         if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
-        if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
+        // if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
 
         // 5. Execute 
         if (winnerStrength > 0.01) {
             winnerStrength = MaxF(winnerStrength, 0.4);
 
-            // This should now appear!
             thePlayer.DisplayHudMessage("SEND VIBE: Type " + winnerType + " Str: " + winnerStrength);
 
             if (winnerType == 1) {
@@ -75,6 +75,7 @@ class CBoatVibrationManager extends CObject {
         curP = fV.Z - bV.Z;
         curH = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
+        // Maintaining sensitive state tracking for all axes
         if (AbsF(curT - lastTilt) > 0.0001) lastTiltDir = GetSign(curT - lastTilt);
         if (AbsF(curP - lastPitch) > 0.0001) lastPitchDir = GetSign(curP - lastPitch);
         if (AbsF(curH - lastHeave) > 0.0001) lastHeaveDir = GetSign(curH - lastHeave);
