@@ -10,35 +10,33 @@ class CBoatVibrationManager extends CObject {
         var dirPitch : float;
         var sPitch : float;
         var vibeDuration : float;
+        var absPitch : float;
 
         if (messageTimer > 0) messageTimer -= dt;
         if (vibeCooldown > 0) vibeCooldown -= dt;
 
-        // 1. Physics Capture (Pitch Only)
         curPitch = fV.Z - bV.Z;
+        absPitch = AbsF(curPitch); // We use this for all checks
         dirPitch = GetSign(curPitch - lastPitch);
 
-        // 2. The Latch Reset
-        // Allow a new trigger once the boat settles toward the center
-        if (AbsF(curPitch) < 0.1) {
+        // 1. Reset the Latch when the boat is relatively level
+        if (absPitch < 0.1) {
             hasTriggeredThisFlip = false;
         }
 
-        // 3. The Trigger Logic
+        // 2. Trigger Logic
         sPitch = 0;
         if (dirPitch != lastPitchDir && lastPitchDir != 0) {
-            // Noise floor 0.2, only fire once per wave crest/trough
-            if (AbsF(curPitch) > 0.2 && !hasTriggeredThisFlip) { 
-                sPitch = AbsF(curPitch); 
+            // Check against the absolute pitch so -0.4 is treated like 0.4
+            if (absPitch > 0.2 && !hasTriggeredThisFlip) { 
+                sPitch = absPitch; 
                 hasTriggeredThisFlip = true;
             }
         }
 
-        // 4. Execution
+        // 3. Execution
         if (sPitch > 0 && vibeCooldown <= 0) {
-            // --- DYNAMIC DURATION CALCULATION ---
-            // We map pitch (0.2 to 0.5) to duration (0.1 to 0.4)
-            // A simple linear scale: (Pitch - 0.2) + 0.1
+            // Mapping 0.2 -> 0.5 pitch to 0.1 -> 0.4 duration
             vibeDuration = (sPitch - 0.2) + 0.1;
             vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
 
@@ -47,10 +45,8 @@ class CBoatVibrationManager extends CObject {
                 messageTimer = 1.0;
             }
 
-            // Vibe Strength halved as requested (0.2 Large motor, 0.05 Small motor)
             theGame.VibrateController(0.2, 0.05, vibeDuration);
-            
-            vibeCooldown = 0.8; 
+            vibeCooldown = 0.6; // Slightly shorter cooldown to allow crest AND trough hits
         }
 
         UpdateState(curPitch, dirPitch);
@@ -58,7 +54,6 @@ class CBoatVibrationManager extends CObject {
 
     private function UpdateState(curP : float, dirP : float) {
         lastPitch = curP;
-        // Direction is updated only if movement is significant to avoid jitter
         if (AbsF(curP - lastPitch) > 0.0001) {
             lastPitchDir = dirP;
         }
@@ -70,7 +65,6 @@ class CBoatVibrationManager extends CObject {
         return 0;
     }
 
-    // Helper to keep duration in bounds
     private function ClampF(val : float, min : float, max : float) : float {
         if (val < min) return min;
         if (val > max) return max;
