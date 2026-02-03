@@ -40,8 +40,9 @@ class CBoatVibrationManager extends CObject {
         if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
         if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
 
-        // DEBUG: Unconditional display to catch values below threshold
-        thePlayer.DisplayHudMessage("T: " + (string)sTilt + " P: " + (string)sPitch + " H: " + (string)sHeave + " => " + winnerType + " / " + (string)winnerStrength);
+        // DEBUG: Drill down into TILT to see why it fails
+        // We show: Current Value (is it 0?), Delta (is it changing?), Directions (are they flipping?)
+        thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + "/" + (string)lastTiltDir + " => " + (string)sTilt);
 
         // 5. Execute with Diagnostic Floor
         // If we detect any movement above a tiny threshold...
