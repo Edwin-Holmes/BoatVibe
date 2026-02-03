@@ -8,16 +8,14 @@ class CBoatVibrationManager extends CObject {
         var dirTilt, dirPitch, dirHeave : float;
         var sTilt, sPitch, sHeave : float;
         var winnerStrength : float;
-        var winnerType : int; // 1 = Heave, 2 = Pitch, 3 = Tilt
+        var winnerType : int; 
 
-        // 1. Countdown Gap logic
         if (vibeCooldown > 0) {
             vibeCooldown -= dt;
             UpdateState(lV, rV, fV, bV);
             return; 
         }
 
-        // 2. Capture Physics
         curTilt  = lV.Z - rV.Z;
         curPitch = fV.Z - bV.Z;
         curHeave = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
@@ -27,55 +25,44 @@ class CBoatVibrationManager extends CObject {
         dirHeave = GetSign(curHeave - lastHeave);
 
         // 3. Detect "Flip" Strength
-        // Uses explicit logic to avoid ternary issues and easier debugging
         sTilt = 0;
-        if (dirTilt != lastTiltDir) {
-            // Boost multiplier to 5.0 to catch even moderate waves (0.15 tilt -> 0.75 strength)
+        if (dirTilt != lastTiltDir && lastTiltDir != 0) {
             sTilt = AbsF(curTilt) * 5.0;
         }
 
         sPitch = 0;
-        if (dirPitch != lastPitchDir) {
-            // Boost multiplier to 5.0
+        if (dirPitch != lastPitchDir && lastPitchDir != 0) {
             sPitch = AbsF(curPitch) * 5.0;
         }
 
         sHeave = 0;
-        if (dirHeave != lastHeaveDir) {
-            // Heave Velocity is ZERO at the peak/trough, so the old math (AbsF(cur-last)) made sHeave = 0
-            // Instead, just give a flat "Bump" sensation when the heave direction flips
+        if (dirHeave != lastHeaveDir && lastHeaveDir != 0) {
             sHeave = 0.5; 
         }
 
-        // DEBUG: Explicit print of the comparison
-        //thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + " vs " + (string)lastTiltDir + " => " + (string)sTilt);
+        // --- THE MISSING LINK: PICK THE WINNER ---
+        winnerStrength = 0;
+        winnerType = 0;
 
-        // 5. Execute with Diagnostic Floor
-        // If we detect any movement above a tiny threshold...
+        if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
+        if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
+        if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
+
+        // 5. Execute 
         if (winnerStrength > 0.01) {
-            
-            // DIAGNOSTIC: If the vibe is too weak to feel, force it to 0.3
-            winnerStrength = MaxF(winnerStrength, 0.3);
+            winnerStrength = MaxF(winnerStrength, 0.4);
 
-            // DEBUG: Show exactly what we are sending to the controller
-            thePlayer.DisplayHudMessage("SEND VIBE: " + winnerType + " Str: " + (string)winnerStrength);
+            // This should now appear!
+            thePlayer.DisplayHudMessage("SEND VIBE: Type " + winnerType + " Str: " + winnerStrength);
 
-            // FORCE TEST: Use BOTH motors and LONGER duration for everything to rule out hardware/duration issues
             if (winnerType == 1) {
-                // Heave: Strong Rumble (Both Motors)
-                theGame.VibrateControllerVeryHard();
-                //theGame.VibrateController(MinF(winnerStrength, 1.0), MinF(winnerStrength, 1.0), 0.3); 
+                theGame.VibrateController(0.5, 0.2, 0.15); 
             } else if (winnerType == 2) {
-                // Pitch: Medium Rumble
-                theGame.VibrateControllerVeryHard();
-                //theGame.VibrateController(MinF(winnerStrength * 0.8, 1.0), MinF(winnerStrength * 0.8, 1.0), 0.25);
+                theGame.VibrateController(0.4, 0.1, 0.12);
             } else if (winnerType == 3) {
-                // Tilt: Fast Rumble
-                theGame.VibrateControllerVeryHard();
-                //theGame.VibrateController(MinF(winnerStrength * 0.5, 0.5), MinF(winnerStrength * 0.6, 1.0), 0.2);
+                theGame.VibrateController(0.1, 0.3, 0.12);
             }
             
-            // Set the gap - 0.6s provides a clear pulse/pause rhythm
             vibeCooldown = 0.6; 
         }
 
@@ -88,33 +75,16 @@ class CBoatVibrationManager extends CObject {
         curP = fV.Z - bV.Z;
         curH = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        // CRITICAL FIX: Always update direction logic to avoid "sticky" old states
-        // This prevents the "busy" bug where we compare against an ancient state forever
-        if (AbsF(curT - lastTilt) > 0.0001) {
-            lastTiltDir = GetSign(curT - lastTilt);
-        } else {
-            // If delta is effectively zero, we are 'stationary' (dir = 0)
-            lastTiltDir = 0;
-        }
-
-        if (AbsF(curP - lastPitch) > 0.0001) {
-            lastPitchDir = GetSign(curP - lastPitch);
-        } else {
-            lastPitchDir = 0;
-        }
-
-        if (AbsF(curH - lastHeave) > 0.0001) {
-            lastHeaveDir = GetSign(curH - lastHeave);
-        } else {
-            lastHeaveDir = 0;
-        }
+        if (AbsF(curT - lastTilt) > 0.0001) lastTiltDir = GetSign(curT - lastTilt);
+        if (AbsF(curP - lastPitch) > 0.0001) lastPitchDir = GetSign(curP - lastPitch);
+        if (AbsF(curH - lastHeave) > 0.0001) lastHeaveDir = GetSign(curH - lastHeave);
 
         lastTilt = curT; lastPitch = curP; lastHeave = curH;
     }
 
     private function GetSign(val : float) : float {
-        if (val > 0) return 1.0;
-        if (val < 0) return -1.0;
+        if (val > 0.0001) return 1.0;
+        if (val < -0.0001) return -1.0;
         return 0;
     }
 }
