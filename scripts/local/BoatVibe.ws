@@ -27,22 +27,25 @@ class CBoatVibrationManager extends CObject {
         dirHeave = GetSign(curHeave - lastHeave);
 
         // 3. Detect "Flip" Strength
-        // Increased multipliers to ensure the math produces visible numbers
-        sTilt  = (dirTilt != lastTiltDir)  ? AbsF(curTilt) * 2.0 : 0;
-        sPitch = (dirPitch != lastPitchDir) ? AbsF(curPitch) * 2.0 : 0;
-        sHeave = (dirHeave != lastHeaveDir) ? AbsF(curHeave - lastHeave) * 150.0 : 0; 
+        // Uses explicit logic to avoid ternary issues and easier debugging
+        sTilt = 0;
+        if (dirTilt != lastTiltDir) {
+            sTilt = AbsF(curTilt) * 2.0;
+        }
 
-        // 4. PICK THE BIGGEST (The Winner)
-        winnerStrength = 0;
-        winnerType = 0;
+        sPitch = 0;
+        if (dirPitch != lastPitchDir) {
+            sPitch = AbsF(curPitch) * 2.0;
+        }
 
-        if (sHeave > winnerStrength) { winnerStrength = sHeave; winnerType = 1; }
-        if (sPitch > winnerStrength) { winnerStrength = sPitch; winnerType = 2; }
-        if (sTilt > winnerStrength)  { winnerStrength = sTilt;  winnerType = 3; }
+        sHeave = 0;
+        if (dirHeave != lastHeaveDir) {
+            // Heave uses velocity change, not position
+            sHeave = AbsF(curHeave - lastHeave) * 150.0;
+        }
 
-        // DEBUG: Drill down into TILT to see why it fails
-        // We show: Current Value (is it 0?), Delta (is it changing?), Directions (are they flipping?)
-        thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + "/" + (string)lastTiltDir + " => " + (string)sTilt);
+        // DEBUG: Explicit print of the comparison
+        thePlayer.DisplayHudMessage("T:" + (string)curTilt + " D:" + (string)(curTilt - lastTilt) + " Dir:" + (string)dirTilt + " vs " + (string)lastTiltDir + " => " + (string)sTilt);
 
         // 5. Execute with Diagnostic Floor
         // If we detect any movement above a tiny threshold...
@@ -75,9 +78,26 @@ class CBoatVibrationManager extends CObject {
         curP = fV.Z - bV.Z;
         curH = (lV.Z + rV.Z + fV.Z + bV.Z) / 4.0;
 
-        if (AbsF(curT - lastTilt) > 0.0001) lastTiltDir = GetSign(curT - lastTilt);
-        if (AbsF(curP - lastPitch) > 0.0001) lastPitchDir = GetSign(curP - lastPitch);
-        if (AbsF(curH - lastHeave) > 0.0001) lastHeaveDir = GetSign(curH - lastHeave);
+        // CRITICAL FIX: Always update direction logic to avoid "sticky" old states
+        // This prevents the "busy" bug where we compare against an ancient state forever
+        if (AbsF(curT - lastTilt) > 0.0001) {
+            lastTiltDir = GetSign(curT - lastTilt);
+        } else {
+            // If delta is effectively zero, we are 'stationary' (dir = 0)
+            lastTiltDir = 0;
+        }
+
+        if (AbsF(curP - lastPitch) > 0.0001) {
+            lastPitchDir = GetSign(curP - lastPitch);
+        } else {
+            lastPitchDir = 0;
+        }
+
+        if (AbsF(curH - lastHeave) > 0.0001) {
+            lastHeaveDir = GetSign(curH - lastHeave);
+        } else {
+            lastHeaveDir = 0;
+        }
 
         lastTilt = curT; lastPitch = curP; lastHeave = curH;
     }
