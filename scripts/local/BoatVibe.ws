@@ -30,18 +30,21 @@ class CBoatVibrationManager extends CObject {
         // Uses explicit logic to avoid ternary issues and easier debugging
         sTilt = 0;
         if (dirTilt != lastTiltDir) {
-            sTilt = AbsF(curTilt) * 2.0;
+            // Boost multiplier to 5.0 to catch even moderate waves (0.15 tilt -> 0.75 strength)
+            sTilt = AbsF(curTilt) * 5.0;
         }
 
         sPitch = 0;
         if (dirPitch != lastPitchDir) {
-            sPitch = AbsF(curPitch) * 2.0;
+            // Boost multiplier to 5.0
+            sPitch = AbsF(curPitch) * 5.0;
         }
 
         sHeave = 0;
         if (dirHeave != lastHeaveDir) {
-            // Heave uses velocity change, not position
-            sHeave = AbsF(curHeave - lastHeave) * 150.0;
+            // Heave Velocity is ZERO at the peak/trough, so the old math (AbsF(cur-last)) made sHeave = 0
+            // Instead, just give a flat "Bump" sensation when the heave direction flips
+            sHeave = 0.5; 
         }
 
         // DEBUG: Explicit print of the comparison
