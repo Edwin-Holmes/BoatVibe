@@ -5,14 +5,13 @@ class CBoatVibrationManager extends CObject {
     private var hasTriggeredThisFlip : bool; 
     private var echoTimer : float;
     private var echoDuration : float;
-
-    // The "Anti-Double-Thud" Timer
     private var pitchDominanceTimer : float;
 
     public function ProcessBuoyancy(dt : float, lV : Vector, rV : Vector, fV : Vector, bV : Vector) {
         var curPitch, absPitch, diffP, dirPitch : float;
         var curTilt, absTilt, diffT, dirTilt : float;
         var vibeDuration : float;
+        var triggeredPitch : bool;
 
         if (vibeCooldown > 0) vibeCooldown -= dt;
         if (pitchDominanceTimer > 0) pitchDominanceTimer -= dt;
@@ -28,18 +27,19 @@ class CBoatVibrationManager extends CObject {
         diffT = curTilt - lastTilt;
         dirTilt = GetSign(diffT);
 
-        // 2. Reset Latch
-        if (absPitch < 0.1 && absTilt < 0.1) {
+        triggeredPitch = false;
+
+        // 2. Aggressive Reset Latch
+        // Lowered to 0.05 so the latch clears easily even in tiny ripples
+        if (absPitch < 0.05 && absTilt < 0.05) {
             hasTriggeredThisFlip = false;
         }
 
-        // 3. PITCH TRIGGER (The Boss)
+        // 3. PITCH TRIGGER (Priority)
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
             if (absPitch > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
-                
                 vibeDuration = (absPitch - 0.2) + 0.1;
                 vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
-
                 theGame.VibrateController(0.2, 0.0, vibeDuration);
                 
                 if (vibeDuration >= 0.25) {
@@ -49,24 +49,27 @@ class CBoatVibrationManager extends CObject {
 
                 hasTriggeredThisFlip = true;
                 vibeCooldown = 0.5; 
-                
-                // Block Roll for the next half second
                 pitchDominanceTimer = 0.5; 
+                triggeredPitch = true;
             }
         }
 
-        // 4. ROLL TRIGGER (The Assistant)
-        // Only fires if we aren't currently "Pitch Dominant"
-        if (pitchDominanceTimer <= 0 && dirTilt != lastTiltDir && dirTilt != 0 && lastTiltDir != 0) {
-            if (absTilt > 0.2 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
-                
-                vibeDuration = (absTilt - 0.2) + 0.1;
-                vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
+        // 4. ROLL TRIGGER (Wide Net)
+        // Fires if Pitch didn't trigger THIS frame AND we aren't in the Pitch Dominance window
+        if (!triggeredPitch && pitchDominanceTimer <= 0) {
+            if (dirTilt != lastTiltDir && dirTilt != 0 && lastTiltDir != 0) {
+                // Lowered threshold to 0.05 to ensure your 0.12-0.18 range hits every time
+                if (absTilt > 0.05 && !hasTriggeredThisFlip && vibeCooldown <= 0) {
+                    
+                    // Calculation adjusted to make 0.15 tilt feel like a standard 0.2 vibe
+                    vibeDuration = (absTilt - 0.05) + 0.1;
+                    vibeDuration = ClampF(vibeDuration, 0.1, 0.6);
 
-                theGame.VibrateController(0.2, 0.0, vibeDuration);
-                
-                hasTriggeredThisFlip = true;
-                vibeCooldown = 0.5; 
+                    theGame.VibrateController(0.2, 0.0, vibeDuration);
+                    
+                    hasTriggeredThisFlip = true;
+                    vibeCooldown = 0.4; // Slightly faster cooldown for roll to catch rhythmic rocking
+                }
             }
         }
 
@@ -81,14 +84,16 @@ class CBoatVibrationManager extends CObject {
         // 6. Update States
         if (AbsF(diffP) > 0.0001) lastPitchDir = dirPitch;
         lastPitch = curPitch;
-
+        
+        // Increased sensitivity for state update to match your small delta values
         if (AbsF(diffT) > 0.0001) lastTiltDir = dirTilt;
         lastTilt = curTilt;
     }
 
     private function GetSign(val : float) : float {
-        if (val > 0.001) return 1.0;
-        if (val < -0.001) return -1.0;
+        // High sensitivity for the direction flip
+        if (val > 0.0005) return 1.0;
+        if (val < -0.0005) return -1.0;
         return 0;
     }
 
