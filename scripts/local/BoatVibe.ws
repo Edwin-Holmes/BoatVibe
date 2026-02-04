@@ -45,10 +45,10 @@ class CBoatVibrationManager extends CObject {
         pitchJustTriggered = false;
         
         if (dirPitch != lastPitchDir && dirPitch != 0 && lastPitchDir != 0) {
-            // Threshold 0.2: Significant wave/movement required
-            if (absPitch > 0.2 && !hasTriggeredPitchFlip && vibeCooldown <= 0) {
+            // Threshold lowered to 0.05 to catch subtle movements on flat water
+            if (absPitch > 0.05 && !hasTriggeredPitchFlip && vibeCooldown <= 0) {
                 
-                vibeDuration = ClampF((absPitch - 0.2) + 0.1, 0.1, 0.6);
+                vibeDuration = ClampF((absPitch - 0.05) + 0.1, 0.1, 0.6);
                 theGame.VibrateController(0.2, 0.0, vibeDuration);
                 
                 // Set up the motor 'echo' for heavy hits
@@ -58,8 +58,8 @@ class CBoatVibrationManager extends CObject {
                 }
 
                 hasTriggeredPitchFlip = true;
-                vibeCooldown = 0.5; 
-                pitchDominanceTimer = 1.0; // Silence Roll for 1 second
+                vibeCooldown = 2.0; 
+                pitchDominanceTimer = 4.0; 
                 pitchJustTriggered = true;
             }
         }
@@ -77,17 +77,18 @@ class CBoatVibrationManager extends CObject {
             // TRIGGER: Direction changed at the peak of a roll
             if (dirTilt != lastTiltDir && lastTiltDir != 0) {
                 
-                // Threshold 0.15: Catching the -0.18 style peaks you observed
-                if (absTilt > 0.15 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
+                // Threshold lowered to 0.08 to catch smaller rolls
+                if (absTilt > 0.08 && !hasTriggeredRollFlip && vibeCooldown <= 0) {
                     
-                    vibeDuration = (absTilt - 0.1) + 0.1;
+                    vibeDuration = (absTilt - 0.08) + 0.1;
                     vibeDuration = ClampF(vibeDuration, 0.1, 0.4);
 
                     // Slightly softer intensity for Roll
-                    theGame.VibrateController(0.15, 0.0, vibeDuration);
+                   theGame.VibrateControllerHard();
+                   //theGame.VibrateController(0.15, 0.0, vibeDuration);
                     
                     hasTriggeredRollFlip = true; 
-                    vibeCooldown = 0.4; 
+                    vibeCooldown = 2.0; 
                 }
             }
         }
@@ -107,8 +108,8 @@ class CBoatVibrationManager extends CObject {
     }
 
     private function GetSign(val : float) : float {
-        if (val > 0.002) return 1.0;
-        if (val < -0.002) return -1.0;
+        if (val > 0.0005) return 1.0;
+        if (val < -0.0005) return -1.0;
         return 0;
     }
 
